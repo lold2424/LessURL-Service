@@ -1,0 +1,111 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  LessURL-Serverless
+
+  Java 21 & SnapStart based URL Shortener Service
+
+Globals:
+  Function:
+    Timeout: 20
+    MemorySize: 1024
+    Runtime: java21
+    Architectures:
+      - x86_64
+    AutoPublishAlias: live
+    Environment:
+      Variables:
+        URLS_TABLE: !Ref UrlsTable
+        CLICKS_TABLE: !Ref ClicksTable
+
+Resources:
+  # API Gateway
+  UrlShortenerApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: prod
+      Cors:
+        AllowMethods: "'GET,POST,OPTIONS'"
+        AllowHeaders: "'Content-Type'"
+        AllowOrigin: "'*'"
+
+  # DynamoDB Tables
+  UrlsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: LessUrlTable
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: shortId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: shortId
+          KeyType: HASH
+
+  ClicksTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: LessUrlClicks
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: shortId
+          AttributeType: S
+        - AttributeName: timestamp
+          AttributeType: S
+      KeySchema:
+        - AttributeName: shortId
+          KeyType: HASH
+        - AttributeName: timestamp
+          KeyType: RANGE
+
+  # Lambda Functions
+  ShortenFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: LessUrlFunction
+      Handler: lessurl.ShortenHandler::handleRequest
+      SnapStart:
+        ApplyOn: PublishedVersions
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            RestApiId: !Ref UrlShortenerApi
+            Path: /shorten
+            Method: POST
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref UrlsTable
+
+    RedirectFunction:
+      Type: AWS::Serverless::Function
+      Properties:
+        CodeUri: LessUrlFunction
+        Handler: lessurl.RedirectHandler::handleRequest
+        SnapStart:
+          ApplyOn: PublishedVersions
+        Events:
+          ApiEvent:
+            Type: Api
+            Properties:
+              RestApiId: !Ref UrlShortenerApi
+              Path: /{shortId}
+              Method: GET
+        Policies:
+          - DynamoDBCrudPolicy:
+              TableName: !Ref UrlsTable
+          - DynamoDBCrudPolicy:
+              TableName: !Ref ClicksTable
+
+Outputs:
+  ApiEndpoint:
+    Description: "API Gateway endpoint URL"
+    Value: !Sub "https://${UrlShortenerApi}.execute-api.${AWS::Region}.amazonaws.com/prod"
+
+  UrlsTableName:
+    Description: "URLs DynamoDB Table"
+    Value: !Ref UrlsTable
+
+  ClicksTableName:
+    Description: "Clicks DynamoDB Table"
+    Value: !Ref ClicksTable
