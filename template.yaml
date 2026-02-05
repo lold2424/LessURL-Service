@@ -33,7 +33,7 @@ Resources:
   UrlsTable:
     Type: AWS::DynamoDB::Table
     Properties:
-      TableName: LessUrlTable
+      TableName: urls
       BillingMode: PAY_PER_REQUEST
       AttributeDefinitions:
         - AttributeName: shortId
@@ -45,7 +45,7 @@ Resources:
   ClicksTable:
     Type: AWS::DynamoDB::Table
     Properties:
-      TableName: LessUrlClicks
+      TableName: clicks
       BillingMode: PAY_PER_REQUEST
       AttributeDefinitions:
         - AttributeName: shortId
@@ -77,25 +77,25 @@ Resources:
         - DynamoDBCrudPolicy:
             TableName: !Ref UrlsTable
 
-    RedirectFunction:
-      Type: AWS::Serverless::Function
-      Properties:
-        CodeUri: LessUrlFunction
-        Handler: lessurl.RedirectHandler::handleRequest
-        SnapStart:
-          ApplyOn: PublishedVersions
-        Events:
-          ApiEvent:
-            Type: Api
-            Properties:
-              RestApiId: !Ref UrlShortenerApi
-              Path: /{shortId}
-              Method: GET
-        Policies:
-          - DynamoDBCrudPolicy:
-              TableName: !Ref UrlsTable
-          - DynamoDBCrudPolicy:
-              TableName: !Ref ClicksTable
+  RedirectFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: LessUrlFunction
+      Handler: lessurl.RedirectHandler::handleRequest
+      SnapStart:
+        ApplyOn: PublishedVersions
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            RestApiId: !Ref UrlShortenerApi
+            Path: /{shortId}
+            Method: GET
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref UrlsTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ClicksTable
 
 Outputs:
   ApiEndpoint:

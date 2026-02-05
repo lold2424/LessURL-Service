@@ -8,6 +8,7 @@
 build/
 out/
 *.class
+gradle.properties
 
 # AWS SAM
 .aws-sam/

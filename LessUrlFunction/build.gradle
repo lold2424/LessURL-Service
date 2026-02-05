@@ -7,10 +7,31 @@ repositories {
 }
 
 dependencies {
+    // AWS Lambda 필수 라이브러리
     implementation 'com.amazonaws:aws-lambda-java-core:1.2.2'
     implementation 'com.amazonaws:aws-lambda-java-events:3.11.0'
-    testImplementation 'junit:junit:4.13.2'
+
+    // JSON 처리기 (Gson) - ShortenHandler에서 사용
+    implementation 'com.google.code.gson:gson:2.10.1'
+
+    // AWS SDK v2 (DynamoDB 용)
+    implementation platform('software.amazon.awssdk:bom:2.29.0') // 버전 관리자
+    implementation 'software.amazon.awssdk:dynamodb'             // DB 클라이언트
+    implementation 'software.amazon.awssdk:url-connection-client' // 가벼운 HTTP 클라이언트 (SnapStart 최적화용)
+
+    // 로깅
+    runtimeOnly 'com.amazonaws:aws-lambda-java-log4j2:1.6.0'
+
+    // 테스트용
+    testImplementation 'org.junit.jupiter:junit-jupiter-api:5.10.1'
+    testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.10.1'
+    testImplementation 'org.mockito:mockito-core:5.11.0'
+    testImplementation 'org.mockito:mockito-junit-jupiter:5.11.0'
 }
 
 sourceCompatibility = 21
 targetCompatibility = 21
+
+tasks.withType(JavaCompile) {
+    options.encoding = 'UTF-8'
+}
