@@ -23,8 +23,8 @@ graph TD
     subgraph Backend API
         F1 -->|API Requests| GW(API Gateway)
         GW -->|POST /shorten| C1(ShortenFunction Lambda)
-        GW -->|GET /{shortId}| C2(RedirectFunction Lambda)
-        GW -->|GET /stats/{shortId}| C3(StatsFunction Lambda)
+        GW -->|"GET /&#123;shortId&#125;"| C2(RedirectFunction Lambda)
+        GW -->|"GET /stats/&#123;shortId&#125;"| C3(StatsFunction Lambda)
     end
 
     subgraph Database
