@@ -97,6 +97,26 @@ Resources:
         - DynamoDBCrudPolicy:
             TableName: !Ref ClicksTable
 
+  StatsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: LessUrlFunction
+      Handler: lessurl.StatsHandler::handleRequest
+      SnapStart:
+        ApplyOn: PublishedVersions
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            RestApiId: !Ref UrlShortenerApi
+            Path: /stats/{shortId}
+            Method: GET
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref UrlsTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref ClicksTable
+
 Outputs:
   ApiEndpoint:
     Description: "API Gateway endpoint URL"
