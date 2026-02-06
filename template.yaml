@@ -117,6 +117,110 @@ Resources:
         - DynamoDBReadPolicy:
             TableName: !Ref ClicksTable
 
+  # Cloud Watch 알람 설정
+  MonitoringTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      DisplayName: "LessUrl-Alarms"
+      Subscription:
+        - Protocol: email
+          Endpoint: "lold2424@gmail.com"
+
+  # Lambda Errors: 에러 > 10/분 일 때 알람 발송
+  LambdaErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "${AWS::StackName}-lambda-errors"
+      AlarmDescription: "Lambda Errors > 10/min"
+      MetricName: Errors
+      Namespace: AWS/Lambda
+      Statistic: Sum
+      Period: 60
+      EvaluationPeriods: 1
+      Threshold: 10
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref ShortenFunction
+      AlarmActions:
+        - !Ref MonitoringTopic
+
+  # Lambda Duration: 실행시간 > 3초 (3000ms) 일 때 알람 발송
+  LambdaDurationAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "${AWS::StackName}-lambda-duration"
+      AlarmDescription: "Lambda Duration > 3s"
+      MetricName: Duration
+      Namespace: AWS/Lambda
+      Statistic: Average
+      Period: 60
+      EvaluationPeriods: 1
+      Threshold: 3000
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref ShortenFunction
+      AlarmActions:
+        - !Ref MonitoringTopic
+
+  # API Gateway 5XX: 서버 에러 > 5/분 일 때 알람 발송
+  ApiGateway5xxAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "${AWS::StackName}-api-5xx"
+      AlarmDescription: "API 5XX > 5/min"
+      MetricName: 5XXError
+      Namespace: AWS/ApiGateway
+      Statistic: Sum
+      Period: 60
+      EvaluationPeriods: 1
+      Threshold: 5
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: ApiName
+          Value: !Ref UrlShortenerApi
+      AlarmActions:
+        - !Ref MonitoringTopic
+
+  # API Gateway 4XX: 클라이언트 에러 > 50/분 일 때 알람 발송
+  ApiGateway4xxAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "${AWS::StackName}-api-4xx"
+      AlarmDescription: "API 4XX > 50/min"
+      MetricName: 4XXError
+      Namespace: AWS/ApiGateway
+      Statistic: Sum
+      Period: 60
+      EvaluationPeriods: 1
+      Threshold: 50
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: ApiName
+          Value: !Ref UrlShortenerApi
+      AlarmActions:
+        - !Ref MonitoringTopic
+
+  # DynamoDB: 읽기 스로틀링 발생 시 알람 발송
+  DynamoDbThrottleAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "${AWS::StackName}-ddb-throttles"
+      AlarmDescription: "DynamoDB Throttled Events"
+      Namespace: AWS/DynamoDB
+      MetricName: ReadThrottleEvents
+      Dimensions:
+        - Name: TableName
+          Value: !Ref UrlsTable
+      Statistic: Sum
+      Period: 60
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      AlarmActions:
+        - !Ref MonitoringTopic
+
 Outputs:
   ApiEndpoint:
     Description: "API Gateway endpoint URL"
