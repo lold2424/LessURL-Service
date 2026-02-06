@@ -59,6 +59,7 @@ Resources:
           KeyType: RANGE
 
   # Lambda Functions
+  # 1. 단축 생성: 쓰기(PutItem)만 가능
   ShortenFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -74,9 +75,14 @@ Resources:
             Path: /shorten
             Method: POST
       Policies:
-        - DynamoDBCrudPolicy:
-            TableName: !Ref UrlsTable
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:PutItem
+              Resource: !GetAtt UrlsTable.Arn
 
+  # 2. 리다이렉트: URL조회(Get), 수정(Update) / 클릭기록(Put)
   RedirectFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -92,11 +98,19 @@ Resources:
             Path: /{shortId}
             Method: GET
       Policies:
-        - DynamoDBCrudPolicy:
-            TableName: !Ref UrlsTable
-        - DynamoDBCrudPolicy:
-            TableName: !Ref ClicksTable
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:GetItem
+                - dynamodb:UpdateItem
+              Resource: !GetAtt UrlsTable.Arn
+            - Effect: Allow
+              Action:
+                - dynamodb:PutItem
+              Resource: !GetAtt ClicksTable.Arn
 
+  # 3. 통계: URL조회(Get) / 클릭조회(Query)
   StatsFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -112,10 +126,16 @@ Resources:
             Path: /stats/{shortId}
             Method: GET
       Policies:
-        - DynamoDBReadPolicy:
-            TableName: !Ref UrlsTable
-        - DynamoDBReadPolicy:
-            TableName: !Ref ClicksTable
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:GetItem
+              Resource: !GetAtt UrlsTable.Arn
+            - Effect: Allow
+              Action:
+                - dynamodb:Query
+              Resource: !GetAtt ClicksTable.Arn
 
   # Cloud Watch 알람 설정
   MonitoringTopic:
