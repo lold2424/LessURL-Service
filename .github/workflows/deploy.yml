@@ -52,6 +52,8 @@ jobs:
       - name: Build and Export Next.js app
         run: npm run build
         working-directory: ./frontend
+        env:
+          NEXT_PUBLIC_API_BASE_URL: ${{ secrets.NEXT_PUBLIC_API_BASE_URL }}
 
       - name: Deploy frontend to S3
         run: aws s3 sync frontend/out/ s3://${{ secrets.FRONTEND_S3_BUCKET }} --delete
