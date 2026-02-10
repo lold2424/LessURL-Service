@@ -17,3 +17,9 @@ samconfig.toml
 # OS
 .DS_Store
 Thumbs.db
+
+# Local Development Specific
+sam_backend.log
+local-env.json
+event.json
+*~

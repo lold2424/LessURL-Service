@@ -12,6 +12,7 @@ import software.amazon.awssdk.services.dynamodb.model.AttributeValue;
 import software.amazon.awssdk.services.dynamodb.model.GetItemRequest;
 import software.amazon.awssdk.services.dynamodb.model.QueryRequest;
 import software.amazon.awssdk.services.dynamodb.model.QueryResponse;
+import software.amazon.awssdk.regions.Region;
 
 import java.net.URI;
 import java.time.Instant;
@@ -28,17 +29,25 @@ public class StatsHandler implements RequestHandler<APIGatewayProxyRequestEvent,
     private final String clicksTableName;
 
     public StatsHandler() {
-        this(
-                DynamoDbClient.builder()
-                        .httpClient(UrlConnectionHttpClient.create())
-                        .build(),
-                new GsonBuilder().setPrettyPrinting().create(),
-                System.getenv("URLS_TABLE"),
-                System.getenv("CLICKS_TABLE")
-        );
+        this.gson = new GsonBuilder().setPrettyPrinting().create();
+        this.urlsTableName = System.getenv("URLS_TABLE");
+        this.clicksTableName = System.getenv("CLICKS_TABLE");
+
+        String dynamoDbEndpoint = System.getenv("DYNAMODB_ENDPOINT");
+        String awsRegion = System.getenv("AWS_REGION");
+
+        var clientBuilder = DynamoDbClient.builder()
+                .httpClient(UrlConnectionHttpClient.create());
+
+        if (dynamoDbEndpoint != null && !dynamoDbEndpoint.isEmpty()) {
+            clientBuilder
+                    .endpointOverride(URI.create(dynamoDbEndpoint))
+                    .region(Region.of(awsRegion));
+        }
+        this.ddb = clientBuilder.build();
     }
 
-    public StatsHandler(DynamoDbClient ddb, Gson gson, String urlsTableName, String clicksTableName) {
+    protected StatsHandler(DynamoDbClient ddb, Gson gson, String urlsTableName, String clicksTableName) {
         this.ddb = ddb;
         this.gson = gson;
         this.urlsTableName = urlsTableName;
@@ -58,7 +67,6 @@ public class StatsHandler implements RequestHandler<APIGatewayProxyRequestEvent,
                 return createErrorResponse(400, "Short ID is required", headers);
             }
 
-            // 1. URL 기본 정보 조회 (UrlsTable)
             Map<String, AttributeValue> urlKey = new HashMap<>();
             urlKey.put("shortId", AttributeValue.builder().s(shortId).build());
 
@@ -73,7 +81,6 @@ public class StatsHandler implements RequestHandler<APIGatewayProxyRequestEvent,
                 return createErrorResponse(404, "URL not found", headers);
             }
 
-            // 2. 최근 7일간의 클릭 로그 조회 (ClicksTable)
             String sevenDaysAgo = Instant.now().minus(7, ChronoUnit.DAYS).toString();
 
             Map<String, AttributeValue> expressionValues = new HashMap<>();
@@ -83,26 +90,21 @@ public class StatsHandler implements RequestHandler<APIGatewayProxyRequestEvent,
             QueryRequest queryRequest = QueryRequest.builder()
                     .tableName(this.clicksTableName)
                     .keyConditionExpression("shortId = :id AND #ts >= :ts")
-                    .expressionAttributeNames(Collections.singletonMap("#ts", "timestamp")) // 예약어 회피
+                    .expressionAttributeNames(Collections.singletonMap("#ts", "timestamp"))
                     .expressionAttributeValues(expressionValues)
                     .build();
 
             QueryResponse queryResponse = ddb.query(queryRequest);
 
-            // 3. 통계 계산 (파이썬 로직 이식)
             Map<String, Object> calculatedStats = calculateStats(queryResponse.items());
 
-            // 추가 정보 삽입
             calculatedStats.put("originalUrl", urlItem.get("originalUrl").s());
             if (urlItem.containsKey("title")) {
                 calculatedStats.put("title", urlItem.get("title").s());
             }
 
-            // 4. API 명세서 형식 준수 { clicks, stats }
             Map<String, Object> responseBody = new HashMap<>();
-            // clicks: 총 클릭 수 (DB의 clickCount)
             responseBody.put("clicks", Integer.parseInt(urlItem.get("clickCount").n()));
-            // stats: 계산된 상세 통계
             responseBody.put("stats", calculatedStats);
 
             response.setStatusCode(200);
@@ -118,7 +120,6 @@ public class StatsHandler implements RequestHandler<APIGatewayProxyRequestEvent,
         return response;
     }
 
-    // 파이썬의 calculate_stats 함수를 자바로 변환
     private Map<String, Object> calculateStats(List<Map<String, AttributeValue>> clicks) {
         Map<Integer, Integer> clicksByHour = new HashMap<>();
         Map<String, Integer> clicksByDay = new HashMap<>();
@@ -126,37 +127,29 @@ public class StatsHandler implements RequestHandler<APIGatewayProxyRequestEvent,
 
         for (Map<String, AttributeValue> click : clicks) {
             String timestamp = click.get("timestamp").s();
-            // referer가 없으면 direct로 처리
             String referer = click.containsKey("referer") ? click.get("referer").s() : "direct";
 
             try {
-                // ISO 8601 파싱 (UTC 기준)
-                ZonedDateTime dt = ZonedDateTime.parse(timestamp); // 예: 2026-02-04T12:00:00Z
+                ZonedDateTime dt = ZonedDateTime.parse(timestamp);
 
-                // 시간별 집계
                 int hour = dt.getHour();
                 clicksByHour.merge(hour, 1, Integer::sum);
 
-                // 일별 집계
-                String day = dt.format(DateTimeFormatter.ISO_LOCAL_DATE); // YYYY-MM-DD
+                String day = dt.format(DateTimeFormatter.ISO_LOCAL_DATE);
                 clicksByDay.merge(day, 1, Integer::sum);
 
-                // 레퍼러 도메인 집계
                 String domain = extractDomain(referer);
                 clicksByReferer.merge(domain, 1, Integer::sum);
 
             } catch (Exception e) {
-                // 날짜 파싱 실패 등은 무시 (파이썬의 pass와 동일)
             }
         }
 
-        // Peak Hour 계산
         Integer peakHour = clicksByHour.entrySet().stream()
                 .max(Map.Entry.comparingByValue())
                 .map(Map.Entry::getKey)
                 .orElse(null);
 
-        // Top Referer 계산
         String topReferer = clicksByReferer.entrySet().stream()
                 .max(Map.Entry.comparingByValue())
                 .map(Map.Entry::getKey)
@@ -173,7 +166,6 @@ public class StatsHandler implements RequestHandler<APIGatewayProxyRequestEvent,
         return stats;
     }
 
-    // 파이썬의 extract_domain 함수 변환
     private String extractDomain(String url) {
         if (url == null || url.equals("direct") || url.isEmpty()) {
             return "direct";
