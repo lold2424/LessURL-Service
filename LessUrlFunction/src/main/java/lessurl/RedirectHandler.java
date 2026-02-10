@@ -5,7 +5,9 @@ import com.amazonaws.services.lambda.runtime.LambdaLogger;
 import com.amazonaws.services.lambda.runtime.RequestHandler;
 import com.amazonaws.services.lambda.runtime.events.APIGatewayProxyRequestEvent;
 import com.amazonaws.services.lambda.runtime.events.APIGatewayProxyResponseEvent;
+import java.net.URI;
 import software.amazon.awssdk.http.urlconnection.UrlConnectionHttpClient;
+import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
 import software.amazon.awssdk.services.dynamodb.model.AttributeValue;
 import software.amazon.awssdk.services.dynamodb.model.GetItemRequest;
@@ -28,16 +30,24 @@ public class RedirectHandler implements RequestHandler<APIGatewayProxyRequestEve
     private final String clicksTable;
 
     public RedirectHandler() {
-        this(
-                DynamoDbClient.builder()
-                        .httpClient(UrlConnectionHttpClient.create())
-                        .build(),
-                System.getenv("URLS_TABLE"),
-                System.getenv("CLICKS_TABLE")
-        );
+        this.urlsTable = System.getenv("URLS_TABLE");
+        this.clicksTable = System.getenv("CLICKS_TABLE");
+
+        String dynamoDbEndpoint = System.getenv("DYNAMODB_ENDPOINT");
+        String awsRegion = System.getenv("AWS_REGION");
+
+        var clientBuilder = DynamoDbClient.builder()
+                .httpClient(UrlConnectionHttpClient.create());
+
+        if (dynamoDbEndpoint != null && !dynamoDbEndpoint.isEmpty()) {
+            clientBuilder
+                    .endpointOverride(URI.create(dynamoDbEndpoint))
+                    .region(Region.of(awsRegion));
+        }
+        this.ddb = clientBuilder.build();
     }
 
-    public RedirectHandler(DynamoDbClient ddb, String urlsTable, String clicksTable) {
+    protected RedirectHandler(DynamoDbClient ddb, String urlsTable, String clicksTable) {
         this.ddb = ddb;
         this.urlsTable = urlsTable;
         this.clicksTable = clicksTable;

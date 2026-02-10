@@ -6,7 +6,9 @@ import com.amazonaws.services.lambda.runtime.events.APIGatewayProxyRequestEvent;
 import com.amazonaws.services.lambda.runtime.events.APIGatewayProxyResponseEvent;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import java.net.URI;
 import software.amazon.awssdk.http.urlconnection.UrlConnectionHttpClient;
+import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
 import software.amazon.awssdk.services.dynamodb.model.AttributeValue;
 import software.amazon.awssdk.services.dynamodb.model.PutItemRequest;
@@ -23,16 +25,22 @@ public class ShortenHandler implements RequestHandler<APIGatewayProxyRequestEven
     private final String tableName;
 
     public ShortenHandler() {
-        this(
-                DynamoDbClient.builder()
-                        .httpClient(UrlConnectionHttpClient.create())
-                        .build(),
-                new GsonBuilder().setPrettyPrinting().create(),
-                System.getenv("URLS_TABLE")
-        );
+        this.gson = new GsonBuilder().setPrettyPrinting().create();
+        this.tableName = System.getenv("URLS_TABLE");
+
+        String dynamoDbEndpoint = System.getenv("DYNAMODB_ENDPOINT");
+        var clientBuilder = DynamoDbClient.builder()
+                .httpClient(UrlConnectionHttpClient.create());
+
+        if (dynamoDbEndpoint != null && !dynamoDbEndpoint.isEmpty()) {
+            clientBuilder
+                    .endpointOverride(URI.create(dynamoDbEndpoint))
+                    .region(Region.of(System.getenv("AWS_REGION")));
+        }
+        this.ddb = clientBuilder.build();
     }
 
-    public ShortenHandler(DynamoDbClient ddb, Gson gson, String tableName) {
+    protected ShortenHandler(DynamoDbClient ddb, Gson gson, String tableName) {
         this.ddb = ddb;
         this.gson = gson;
         this.tableName = tableName;
@@ -84,7 +92,11 @@ public class ShortenHandler implements RequestHandler<APIGatewayProxyRequestEven
             String domain = input.getHeaders().get("Host");
             String stage = input.getRequestContext().getStage();
             String protocol = input.getHeaders().getOrDefault("X-Forwarded-Proto", "https");
-            String shortUrl = String.format("%s://%s/%s/%s", protocol, domain, stage, shortId);
+            String shortUrl = String.format("%s://%s/%s", protocol, domain, shortId);
+
+            if (!domain.contains("localhost")) {
+                shortUrl = String.format("%s://%s/%s/%s", protocol, domain, stage, shortId);
+            }
 
             Map<String, String> responseBody = new HashMap<>();
             responseBody.put("shortId", shortId);

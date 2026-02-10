@@ -15,9 +15,13 @@ export default function Home() {
     setError(null);
 
     try {
-      // Assuming the backend is running locally via `sam local start-api`
-      // and is accessible at http://localhost:8080/prod
-      const response = await fetch("http://localhost:8080/prod/shorten", {
+      // Use environment variable for the API base URL
+      const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
+      if (!apiBaseUrl) {
+        throw new Error("NEXT_PUBLIC_API_BASE_URL is not defined.");
+      }
+
+      const response = await fetch(`${apiBaseUrl}/shorten`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
