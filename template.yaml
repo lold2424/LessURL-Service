@@ -63,7 +63,7 @@ Resources:
   ShortenFunction:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: LessUrlFunction/build/libs/LessUrlFunction-all.jar
+      CodeUri: LessUrlFunction
       Handler: lessurl.ShortenHandler::handleRequest
       SnapStart:
         ApplyOn: PublishedVersions
@@ -86,7 +86,7 @@ Resources:
   RedirectFunction:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: LessUrlFunction/build/libs/LessUrlFunction-all.jar
+      CodeUri: LessUrlFunction
       Handler: lessurl.RedirectHandler::handleRequest
       SnapStart:
         ApplyOn: PublishedVersions
@@ -114,7 +114,7 @@ Resources:
   StatsFunction:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: LessUrlFunction/build/libs/LessUrlFunction-all.jar
+      CodeUri: LessUrlFunction
       Handler: lessurl.StatsHandler::handleRequest
       SnapStart:
         ApplyOn: PublishedVersions

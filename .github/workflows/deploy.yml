@@ -40,6 +40,29 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ap-northeast-2
 
+      # --- Frontend Deployment Steps ---
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '20'
+
+      - name: Install frontend dependencies
+        run: npm install
+        working-directory: ./frontend
+
+      - name: Build and Export Next.js app
+        run: npm run build && npm run export
+        working-directory: ./frontend
+
+      - name: Deploy frontend to S3
+        run: aws s3 sync frontend/out/ s3://${{ secrets.FRONTEND_S3_BUCKET }} --delete
+        if: github.event_name == 'push' && github.ref == 'refs/heads/deploy'
+
+      - name: Invalidate CloudFront cache
+        run: aws cloudfront create-invalidation --distribution-id ${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }} --paths "/*"
+        if: github.event_name == 'push' && github.ref == 'refs/heads/deploy'
+      # --- End Frontend Deployment Steps ---
+
       - name: SAM Build
         run: sam build --use-container
 
