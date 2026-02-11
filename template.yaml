@@ -27,8 +27,7 @@ Resources:
       Cors:
         AllowMethods: "'GET,POST,OPTIONS'"
         AllowHeaders: "'Content-Type'"
-        AllowOrigin: "'*'"
-
+        AllowOrigin: "'https://dkyc3z72xqs74.cloudfront.net'"
   # DynamoDB Tables
   UrlsTable:
     Type: AWS::DynamoDB::Table
