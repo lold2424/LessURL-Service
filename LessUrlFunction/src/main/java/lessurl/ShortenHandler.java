@@ -72,24 +72,37 @@ public class ShortenHandler implements RequestHandler<APIGatewayProxyRequestEven
                 originalUrl = "https://" + originalUrl;
             }
 
-            String shortId = UUID.randomUUID().toString().substring(0, 8);
+            String shortId = null;
+            int maxRetries = 5;
+            for (int i = 0; i < maxRetries; i++) {
+                shortId = UUID.randomUUID().toString().substring(0, 8);
 
-            Map<String, AttributeValue> item = new HashMap<>();
-            item.put("shortId", AttributeValue.builder().s(shortId).build());
-            item.put("originalUrl", AttributeValue.builder().s(originalUrl).build());
-            item.put("createdAt", AttributeValue.builder().s(Instant.now().toString()).build());
-            item.put("clickCount", AttributeValue.builder().n("0").build());
+                Map<String, AttributeValue> item = new HashMap<>();
+                item.put("shortId", AttributeValue.builder().s(shortId).build());
+                item.put("originalUrl", AttributeValue.builder().s(originalUrl).build());
+                item.put("createdAt", AttributeValue.builder().s(Instant.now().toString()).build());
+                item.put("clickCount", AttributeValue.builder().n("0").build());
 
-            if (title != null && !title.isEmpty()) {
-                item.put("title", AttributeValue.builder().s(title).build());
+                if (title != null && !title.isEmpty()) {
+                    item.put("title", AttributeValue.builder().s(title).build());
+                }
+
+                PutItemRequest putRequest = PutItemRequest.builder()
+                        .tableName(this.tableName)
+                        .item(item)
+                        .conditionExpression("attribute_not_exists(shortId)")
+                        .build();
+
+                try {
+                    ddb.putItem(putRequest);
+                    break; // Successfully put item, exit loop
+                } catch (software.amazon.awssdk.services.dynamodb.model.ConditionalCheckFailedException e) {
+                    context.getLogger().log("Collision detected for shortId: " + shortId + ". Retrying...");
+                    if (i == maxRetries - 1) {
+                        throw new RuntimeException("Failed to generate a unique shortId after multiple retries.", e);
+                    }
+                }
             }
-
-            PutItemRequest putRequest = PutItemRequest.builder()
-                    .tableName(this.tableName)
-                    .item(item)
-                    .build();
-
-            ddb.putItem(putRequest);
 
             String domain = input.getHeaders().get("Host");
             String stage = input.getRequestContext().getStage();
