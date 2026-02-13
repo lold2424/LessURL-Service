@@ -28,6 +28,9 @@ jobs:
           java-version: '21'
           cache: 'gradle'
 
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+
       - name: Setup SAM CLI
         uses: aws-actions/setup-sam@v2
         with:
@@ -64,7 +67,7 @@ jobs:
       # --- End Frontend Deployment Steps ---
 
       - name: SAM Build
-        run: sam build --use-container
+        run: sam build
 
       - name: SAM Deploy
         if: github.event_name == 'push' && github.ref == 'refs/heads/deploy'
