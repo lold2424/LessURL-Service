@@ -51,7 +51,7 @@ public class ShortenHandler implements RequestHandler<APIGatewayProxyRequestEven
         APIGatewayProxyResponseEvent response = new APIGatewayProxyResponseEvent();
                     Map<String, String> headers = new HashMap<>();
                     headers.put("Content-Type", "application/json");
-                    headers.put("Access-Control-Allow-Origin", "https://dkyc3z72xqs74.cloudfront.net");
+                    headers.put("Access-Control-Allow-Origin", System.getenv("CORS_ALLOWED_ORIGIN"));
                     headers.put("Access-Control-Allow-Methods", "POST,OPTIONS");
                     headers.put("Access-Control-Allow-Headers", "Content-Type");
         try {
@@ -132,9 +132,9 @@ public class ShortenHandler implements RequestHandler<APIGatewayProxyRequestEven
     private APIGatewayProxyResponseEvent createErrorResponse(int statusCode, String message, Map<String, String> headers) {
         APIGatewayProxyResponseEvent response = new APIGatewayProxyResponseEvent();
         response.setStatusCode(statusCode);
-        headers.put("Access-Control-Allow-Origin", "https://dkyc3z72xqs74.cloudfront.net"); // CORS 헤더 추가
-        headers.put("Access-Control-Allow-Methods", "POST,OPTIONS"); // CORS 헤더 추가
-        headers.put("Access-Control-Allow-Headers", "Content-Type"); // CORS 헤더 추가
+        headers.put("Access-Control-Allow-Origin", System.getenv("CORS_ALLOWED_ORIGIN"));
+        headers.put("Access-Control-Allow-Methods", "POST,OPTIONS");
+        headers.put("Access-Control-Allow-Headers", "Content-Type");
         response.setHeaders(headers);
         Map<String, String> errorBody = new HashMap<>();
         errorBody.put("error", message);

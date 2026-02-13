@@ -3,6 +3,12 @@ plugins {
     id 'com.github.johnrengelman.shadow' version '8.1.1'
 }
 
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
 repositories {
     mavenCentral()
 }
@@ -29,9 +35,6 @@ dependencies {
     testImplementation 'org.mockito:mockito-core:5.11.0'
     testImplementation 'org.mockito:mockito-junit-jupiter:5.11.0'
 }
-
-sourceCompatibility = 21
-targetCompatibility = 21
 
 shadowJar {
     archiveClassifier.set('all')

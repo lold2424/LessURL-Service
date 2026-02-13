@@ -74,4 +74,5 @@ jobs:
             --s3-bucket ${{ secrets.SAM_S3_BUCKET }} \
             --capabilities CAPABILITY_IAM \
             --no-confirm-changeset \
-            --region ap-northeast-2
+            --region ap-northeast-2 \
+            --parameter-overrides CorsAllowedOrigin=${{ secrets.CORS_PROD_ORIGIN }}
