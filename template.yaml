@@ -5,6 +5,15 @@ Description: >
 
   Java 21 & SnapStart based URL Shortener Service
 
+Parameters:
+  CorsAllowedOrigin:
+    Type: String
+    Description: API에 대한 CORS 헤더 값
+  GeminiApiKey:
+    Type: String
+    Description: Gemini API 키
+    NoEcho: true
+
 Globals:
   Function:
     Timeout: 20
@@ -17,6 +26,7 @@ Globals:
       Variables:
         URLS_TABLE: !Ref UrlsTable
         CLICKS_TABLE: !Ref ClicksTable
+        CORS_ALLOWED_ORIGIN: "dummy-value-from-template"
 
 Resources:
   # API Gateway
@@ -27,7 +37,7 @@ Resources:
       Cors:
         AllowMethods: "'GET,POST,OPTIONS'"
         AllowHeaders: "'Content-Type'"
-        AllowOrigin: "'https://dkyc3z72xqs74.cloudfront.net'"
+        AllowOrigin: !Sub "'${CorsAllowedOrigin}'"
   # DynamoDB Tables
   UrlsTable:
     Type: AWS::DynamoDB::Table
@@ -66,6 +76,9 @@ Resources:
       Handler: lessurl.ShortenHandler::handleRequest
       SnapStart:
         ApplyOn: PublishedVersions
+      Environment:
+        Variables:
+          GEMINI_API_KEY: !Ref GeminiApiKey
       Events:
         ApiEvent:
           Type: Api
