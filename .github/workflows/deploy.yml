@@ -52,11 +52,15 @@ jobs:
           node-version: '20'
 
       - name: Install frontend dependencies
-        run: npm install
+        run: npm ci
         working-directory: ./frontend
 
+      - name: Debug package.json
+        run: cat ./frontend/package.json && npm run --prefix ./frontend
+        working-directory: ./frontend
+      
       - name: Build and Export Next.js app
-        run: npm run build && npm run export
+        run: npm run build && npm run export && npm run export
         working-directory: ./frontend
         env:
           NEXT_PUBLIC_API_BASE_URL: ${{ secrets.NEXT_PUBLIC_API_BASE_URL }}
