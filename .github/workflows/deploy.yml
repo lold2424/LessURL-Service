@@ -56,7 +56,7 @@ jobs:
         working-directory: ./frontend
 
       - name: Debug package.json
-        run: cat ./frontend/package.json && npm run --prefix ./frontend
+        run: cat package.json && npm run
         working-directory: ./frontend
       
       - name: Build and Export Next.js app
