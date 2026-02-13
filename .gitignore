@@ -19,7 +19,7 @@ samconfig.toml
 Thumbs.db
 
 # Local Development Specific
-sam_backend.log
+*.log
 local-env.json
 event.json
 *~
