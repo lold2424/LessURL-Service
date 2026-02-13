@@ -75,4 +75,4 @@ jobs:
             --capabilities CAPABILITY_IAM \
             --no-confirm-changeset \
             --region ap-northeast-2 \
-            --parameter-overrides CorsAllowedOrigin=${{ secrets.CORS_PROD_ORIGIN }}
+            --parameter-overrides CorsAllowedOrigin=${{ secrets.CORS_PROD_ORIGIN }} GeminiApiKey=${{ secrets.GEMINI_API_KEY }}

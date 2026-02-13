@@ -15,7 +15,6 @@ export default function Home() {
     setError(null);
 
     try {
-      // Use environment variable for the API base URL
       const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
       if (!apiBaseUrl) {
         throw new Error("NEXT_PUBLIC_API_BASE_URL is not defined.");
@@ -31,7 +30,7 @@ export default function Home() {
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.message || "Failed to shorten URL");
+        throw new Error(errorData.error || "Failed to shorten URL");
       }
 
       const data = await response.json();

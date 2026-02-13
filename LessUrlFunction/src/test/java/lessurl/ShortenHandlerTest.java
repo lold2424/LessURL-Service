@@ -16,6 +16,10 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
 import software.amazon.awssdk.services.dynamodb.model.PutItemRequest;
 
+import java.io.IOException;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -28,6 +32,8 @@ class ShortenHandlerTest {
 
     private ShortenHandler shortenHandler;
     private final Gson gson = new Gson();
+    private final String testApiKey = "test-api-key";
+
 
     @Mock
     private DynamoDbClient mockDdb;
@@ -38,14 +44,44 @@ class ShortenHandlerTest {
     @Mock
     private LambdaLogger mockLogger;
 
+    @Mock
+    private HttpClient mockHttpClient;
+
+    @Mock
+    private HttpResponse<String> mockHttpResponse;
+
+
     @Captor
     private ArgumentCaptor<PutItemRequest> putItemRequestCaptor;
 
     @BeforeEach
-    void setUp() {
+    void setUp() throws IOException, InterruptedException {
         lenient().when(mockContext.getLogger()).thenReturn(mockLogger);
-        shortenHandler = new ShortenHandler(mockDdb, gson, "TestTable");
+
+        String safeResponse = """
+            {
+              "candidates": [
+                {
+                  "content": {
+                    "parts": [
+                      {
+                        "text": "SAFE"
+                      }
+                    ],
+                    "role": "model"
+                  }
+                }
+              ]
+            }
+            """;
+        lenient().when(mockHttpResponse.statusCode()).thenReturn(200);
+        lenient().when(mockHttpResponse.body()).thenReturn(safeResponse);
+        lenient().when(mockHttpClient.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
+                .thenReturn(mockHttpResponse);
+
+        shortenHandler = new ShortenHandler(mockDdb, gson, "TestTable", testApiKey, mockHttpClient);
     }
+
 
     private APIGatewayProxyRequestEvent createApiRequest(String body) {
         APIGatewayProxyRequestEvent request = new APIGatewayProxyRequestEvent();
@@ -91,6 +127,32 @@ class ShortenHandlerTest {
         assertTrue(returnedShortUrl.startsWith(expectedUrlPrefix));
         assertTrue(returnedShortUrl.endsWith(savedShortId));
     }
+    
+    @Test
+    @DisplayName("AI가 URL을 악성으로 판단하면 400 에러를 반환한다")
+    void testHandleRequest_MaliciousUrlDetected() throws IOException, InterruptedException {
+        // given
+        String maliciousUrl = "http://malicious-site.com";
+        String requestBody = "{\"url\": \"" + maliciousUrl + "\"}";
+        APIGatewayProxyRequestEvent request = createApiRequest(requestBody);
+
+        String maliciousResponse = """
+            { "candidates": [ { "content": { "parts": [ { "text": "MALWARE" } ] } } ] }
+            """;
+
+        when(mockHttpResponse.body()).thenReturn(maliciousResponse);
+        when(mockHttpClient.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
+                .thenReturn(mockHttpResponse);
+
+        // when
+        APIGatewayProxyResponseEvent response = shortenHandler.handleRequest(request, mockContext);
+
+        // then
+        assertEquals(400, response.getStatusCode());
+        assertTrue(response.getBody().contains("Malicious URL detected"));
+        verify(mockDdb, never()).putItem(any(PutItemRequest.class)); // DB에 저장되지 않아야 함
+    }
+
 
     @Test
     @DisplayName("URL에 프로토콜이 없으면 https:// 를 추가하고 shortUrl을 반환한다")

@@ -9,6 +9,10 @@ Parameters:
   CorsAllowedOrigin:
     Type: String
     Description: API에 대한 CORS 헤더 값
+  GeminiApiKey:
+    Type: String
+    Description: Gemini API 키
+    NoEcho: true
 
 Globals:
   Function:
@@ -72,6 +76,9 @@ Resources:
       Handler: lessurl.ShortenHandler::handleRequest
       SnapStart:
         ApplyOn: PublishedVersions
+      Environment:
+        Variables:
+          GEMINI_API_KEY: !Ref GeminiApiKey
       Events:
         ApiEvent:
           Type: Api
