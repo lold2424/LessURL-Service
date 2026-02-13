@@ -26,9 +26,12 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '21'
+          cache: 'gradle'
 
-      - name: Setup Gradle
+      - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: '7.6.4'
 
       - name: Setup SAM CLI
         uses: aws-actions/setup-sam@v2
@@ -53,7 +56,7 @@ jobs:
         working-directory: ./frontend
 
       - name: Build and Export Next.js app
-        run: npm run build
+        run: npm run build && npm run export
         working-directory: ./frontend
         env:
           NEXT_PUBLIC_API_BASE_URL: ${{ secrets.NEXT_PUBLIC_API_BASE_URL }}
