@@ -26,8 +26,9 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '21'
+          cache: 'gradle'
 
-      - name: Setup Gradle
+      - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v3
 
       - name: Setup SAM CLI
@@ -49,11 +50,15 @@ jobs:
           node-version: '20'
 
       - name: Install frontend dependencies
-        run: npm install
+        run: npm ci
+        working-directory: ./frontend
+
+      - name: Debug package.json
+        run: cat package.json && npm run
         working-directory: ./frontend
 
       - name: Build and Export Next.js app
-        run: npm run build
+        run: npm run build && npm run export
         working-directory: ./frontend
         env:
           NEXT_PUBLIC_API_BASE_URL: ${{ secrets.NEXT_PUBLIC_API_BASE_URL }}
@@ -69,6 +74,13 @@ jobs:
 
       - name: SAM Build
         run: sam build
+
+      - name: Upload Test Reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-reports
+          path: LessUrlFunction/build/reports/tests/test/
 
       - name: SAM Deploy
         if: github.event_name == 'push' && github.ref == 'refs/heads/deploy'
