@@ -26,7 +26,7 @@ Globals:
       Variables:
         URLS_TABLE: !Ref UrlsTable
         CLICKS_TABLE: !Ref ClicksTable
-        CORS_ALLOWED_ORIGIN: "dummy-value-from-template"
+        CORS_ALLOWED_ORIGIN: !Ref CorsAllowedOrigin
 
 Resources:
   # API Gateway
