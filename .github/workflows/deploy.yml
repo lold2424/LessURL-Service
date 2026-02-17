@@ -72,6 +72,10 @@ jobs:
         if: github.event_name == 'push' && github.ref == 'refs/heads/deploy'
       # --- End Frontend Deployment Steps ---
 
+      - name: Grant execute permission to gradlew
+        run: chmod +x gradlew
+        working-directory: ./LessUrlFunction
+
       - name: Clean Gradle Project
         run: ./gradlew clean
         working-directory: ./LessUrlFunction
