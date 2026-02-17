@@ -22,6 +22,7 @@ import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -31,12 +32,14 @@ public class ShortenHandler implements RequestHandler<APIGatewayProxyRequestEven
     private final Gson gson;
     private final String tableName;
     private final String geminiApiKey;
+    private final String safeBrowsingApiKey;
     private final HttpClient httpClient;
 
     public ShortenHandler() {
         this.gson = new GsonBuilder().setPrettyPrinting().create();
         this.tableName = System.getenv("URLS_TABLE");
         this.geminiApiKey = System.getenv("GEMINI_API_KEY");
+        this.safeBrowsingApiKey = System.getenv("SAFE_BROWSING_API_KEY");
 
         String dynamoDbEndpoint = System.getenv("DYNAMODB_ENDPOINT");
         var clientBuilder = DynamoDbClient.builder()
@@ -54,11 +57,12 @@ public class ShortenHandler implements RequestHandler<APIGatewayProxyRequestEven
                 .build();
     }
 
-    protected ShortenHandler(DynamoDbClient ddb, Gson gson, String tableName, String geminiApiKey, HttpClient httpClient) {
+    protected ShortenHandler(DynamoDbClient ddb, Gson gson, String tableName, String geminiApiKey, String safeBrowsingApiKey, HttpClient httpClient) {
         this.ddb = ddb;
         this.gson = gson;
         this.tableName = tableName;
         this.geminiApiKey = geminiApiKey;
+        this.safeBrowsingApiKey = safeBrowsingApiKey;
         this.httpClient = httpClient;
     }
 
@@ -89,7 +93,7 @@ public class ShortenHandler implements RequestHandler<APIGatewayProxyRequestEven
                 originalUrl = "https://" + originalUrl;
             }
 
-            if (isUrlMalicious(originalUrl, context.getLogger())) {
+            if (isUrlMaliciousWithGemini(originalUrl, context.getLogger()) || isUrlMaliciousWithSafeBrowsing(originalUrl, context.getLogger())) {
                 return createErrorResponse(400, "유해 URL이 감지되었습니다.", headers);
             }
 
@@ -151,7 +155,64 @@ public class ShortenHandler implements RequestHandler<APIGatewayProxyRequestEven
         return response;
     }
 
-    private boolean isUrlMalicious(String urlToCheck, LambdaLogger logger) {
+    private boolean isUrlMaliciousWithSafeBrowsing(String urlToCheck, LambdaLogger logger) {
+        if (this.safeBrowsingApiKey == null || this.safeBrowsingApiKey.isEmpty()) {
+            logger.log("경고: SAFE_BROWSING_API_KEY가 설정되지 않았습니다. Google Safe Browsing 검사를 건너뜁니다.");
+            return false;
+        }
+
+        String apiUrl = "https://safebrowsing.googleapis.com/v4/threatMatches:find?key=" + this.safeBrowsingApiKey;
+        String requestBody = """
+            {
+              "client": {
+                "clientId": "lessurl-serverless",
+                "clientVersion": "1.0.0"
+              },
+              "threatInfo": {
+                "threatTypes": ["MALWARE", "SOCIAL_ENGINEERING", "UNWANTED_SOFTWARE", "POTENTIALLY_HARMFUL_APPLICATION"],
+                "platformTypes": ["ANY_PLATFORM"],
+                "threatEntryTypes": ["URL"],
+                "threatEntries": [
+                  {"url": "%s"}
+                ]
+              }
+            }
+            """.formatted(urlToCheck);
+
+        try {
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(apiUrl))
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(requestBody))
+                    .build();
+
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+
+            if (response.statusCode() != 200) {
+                logger.log(String.format("Google Safe Browsing API 오류: %s %s", response.statusCode(), response.body()));
+                return false;
+            }
+
+            String responseBody = response.body();
+            logger.log(String.format("Google Safe Browsing API 응답: %s", responseBody));
+
+            if (!responseBody.trim().equals("{}")) {
+                 Map<String, Object> responseMap = gson.fromJson(responseBody, Map.class);
+                 if (responseMap.containsKey("matches")) {
+                    logger.log(String.format("Google Safe Browsing 위협 감지: %s", responseBody));
+                    return true;
+                 }
+            }
+            return false;
+
+        } catch (IOException | InterruptedException e) {
+            logger.log(String.format("Google Safe Browsing API 호출 중 예외 발생: %s", e.getMessage()));
+            Thread.currentThread().interrupt();
+            return false;
+        }
+    }
+
+    private boolean isUrlMaliciousWithGemini(String urlToCheck, LambdaLogger logger) {
         if (this.geminiApiKey == null || this.geminiApiKey.isEmpty()) {
             logger.log("경고: GEMINI_API_KEY가 설정되지 않았습니다. 유해 URL 검사를 건너뜜.");
             return false;

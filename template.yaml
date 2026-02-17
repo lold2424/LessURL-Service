@@ -13,6 +13,10 @@ Parameters:
     Type: String
     Description: Gemini API 키
     NoEcho: true
+  SafeBrowsingApiKey:
+    Type: String
+    Description: Google Safe Browsing API 키
+    NoEcho: true
 
 Globals:
   Function:
@@ -79,6 +83,7 @@ Resources:
       Environment:
         Variables:
           GEMINI_API_KEY: !Ref GeminiApiKey
+          SAFE_BROWSING_API_KEY: !Ref SafeBrowsingApiKey
       Events:
         ApiEvent:
           Type: Api
