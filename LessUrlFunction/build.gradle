@@ -38,9 +38,10 @@ dependencies {
 
 shadowJar {
     archiveClassifier.set('all')
-    manifest {
-        attributes 'Main-Class': 'lessurl.ShortenHandler'
-    }
+    mergeServiceFiles()
+    exclude 'META-INF/*.SF'
+    exclude 'META-INF/*.DSA'
+    exclude 'META-INF/*.RSA'
 }
 
 build.dependsOn shadowJar
