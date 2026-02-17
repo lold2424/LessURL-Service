@@ -72,8 +72,12 @@ jobs:
         if: github.event_name == 'push' && github.ref == 'refs/heads/deploy'
       # --- End Frontend Deployment Steps ---
 
+      - name: Clean Gradle Project
+        run: ./gradlew clean
+        working-directory: ./LessUrlFunction
+
       - name: SAM Build
-        run: sam build
+        run: sam build --no-cached
 
       - name: Upload Test Reports
         uses: actions/upload-artifact@v4
