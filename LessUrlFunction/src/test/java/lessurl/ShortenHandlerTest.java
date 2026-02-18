@@ -33,6 +33,7 @@ class ShortenHandlerTest {
     private ShortenHandler shortenHandler;
     private final Gson gson = new Gson();
     private final String testApiKey = "test-api-key";
+    private final String testSafeBrowsingApiKey = "test-safe-browsing-key";
 
 
     @Mock
@@ -65,7 +66,7 @@ class ShortenHandlerTest {
                   "content": {
                     "parts": [
                       {
-                        "text": "SAFE"
+                        "text": "{\\"classification\\": \\"SAFE\\"}"
                       }
                     ],
                     "role": "model"
@@ -79,7 +80,7 @@ class ShortenHandlerTest {
         lenient().when(mockHttpClient.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
                 .thenReturn(mockHttpResponse);
 
-        shortenHandler = new ShortenHandler(mockDdb, gson, "TestTable", testApiKey, mockHttpClient);
+        shortenHandler = new ShortenHandler(mockDdb, gson, "TestTable", testApiKey, testSafeBrowsingApiKey, mockHttpClient);
     }
 
 
@@ -137,7 +138,7 @@ class ShortenHandlerTest {
         APIGatewayProxyRequestEvent request = createApiRequest(requestBody);
 
         String maliciousResponse = """
-            { "candidates": [ { "content": { "parts": [ { "text": "MALWARE" } ] } } ] }
+            { "candidates": [ { "content": { "parts": [ { "text": "{\\"classification\\": \\"MALWARE\\"}" } ] } } ] }
             """;
 
         when(mockHttpResponse.body()).thenReturn(maliciousResponse);
@@ -149,8 +150,8 @@ class ShortenHandlerTest {
 
         // then
         assertEquals(400, response.getStatusCode());
-        assertTrue(response.getBody().contains("Malicious URL detected"));
-        verify(mockDdb, never()).putItem(any(PutItemRequest.class)); // DB에 저장되지 않아야 함
+        assertTrue(response.getBody().contains("유해 URL이 감지되었습니다."));
+        verify(mockDdb, never()).putItem(any(PutItemRequest.class));
     }
 
 
@@ -195,7 +196,7 @@ class ShortenHandlerTest {
 
         // then
         assertEquals(400, response.getStatusCode());
-        assertTrue(response.getBody().contains("Request body is empty"));
+        assertTrue(response.getBody().contains("요청 본문이 비어 있습니다."));
     }
 
     @Test
@@ -212,7 +213,7 @@ class ShortenHandlerTest {
 
         // then
         assertEquals(500, response.getStatusCode());
-        assertTrue(response.getBody().contains("Internal Server Error"));
+        assertTrue(response.getBody().contains("내부 서버 오류"));
     }
 
     @Test
