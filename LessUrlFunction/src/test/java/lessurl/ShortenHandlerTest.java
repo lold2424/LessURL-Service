@@ -247,4 +247,39 @@ class ShortenHandlerTest {
         assertTrue(returnedShortUrl.endsWith(savedShortId));
         assertTrue(returnedShortUrl.startsWith("https://test-api.com/prod/"));
     }
+
+    @Test
+    @DisplayName("visibility 옵션을 명시하면 DB에 해당 값으로 저장된다")
+    void testHandleRequest_WithVisibility() {
+        // given
+        String inputUrl = "google.com";
+        String inputVisibility = "PUBLIC";
+        String requestBody = String.format("{\"url\": \"%s\", \"visibility\": \"%s\"}", inputUrl, inputVisibility);
+        APIGatewayProxyRequestEvent request = createApiRequest(requestBody);
+
+        // when
+        shortenHandler.handleRequest(request, mockContext);
+
+        // then
+        verify(mockDdb).putItem(putItemRequestCaptor.capture());
+        PutItemRequest capturedRequest = putItemRequestCaptor.getValue();
+        assertEquals("PUBLIC", capturedRequest.item().get("visibility").s());
+    }
+
+    @Test
+    @DisplayName("visibility 옵션이 없으면 기본값 PRIVATE으로 저장된다")
+    void testHandleRequest_DefaultVisibilityIsPrivate() {
+        // given
+        String inputUrl = "google.com";
+        String requestBody = String.format("{\"url\": \"%s\"}", inputUrl);
+        APIGatewayProxyRequestEvent request = createApiRequest(requestBody);
+
+        // when
+        shortenHandler.handleRequest(request, mockContext);
+
+        // then
+        verify(mockDdb).putItem(putItemRequestCaptor.capture());
+        PutItemRequest capturedRequest = putItemRequestCaptor.getValue();
+        assertEquals("PRIVATE", capturedRequest.item().get("visibility").s());
+    }
 }

@@ -51,9 +51,22 @@ Resources:
       AttributeDefinitions:
         - AttributeName: shortId
           AttributeType: S
+        - AttributeName: visibility
+          AttributeType: S
+        - AttributeName: createdAt
+          AttributeType: S
       KeySchema:
         - AttributeName: shortId
           KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: VisibilityIndex
+          KeySchema:
+            - AttributeName: visibility
+              KeyType: HASH
+            - AttributeName: createdAt
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
 
   ClicksTable:
     Type: AWS::DynamoDB::Table
@@ -153,6 +166,31 @@ Resources:
               Action:
                 - dynamodb:Query
               Resource: !GetAtt ClicksTable.Arn
+
+  # 4. 공개 목록: 인덱스 쿼리
+  ListPublicFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: LessUrlFunction
+      Handler: lessurl.ListPublicHandler::handleRequest
+      SnapStart:
+        ApplyOn: PublishedVersions
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            RestApiId: !Ref UrlShortenerApi
+            Path: /public-urls
+            Method: GET
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:Query
+              Resource: 
+                - !GetAtt UrlsTable.Arn
+                - !Sub "${UrlsTable.Arn}/index/VisibilityIndex"
 
   # Cloud Watch 알람 설정
   MonitoringTopic:

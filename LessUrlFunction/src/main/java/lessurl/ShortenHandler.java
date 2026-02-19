@@ -83,8 +83,12 @@ public class ShortenHandler implements RequestHandler<APIGatewayProxyRequestEven
 
             Map<String, String> requestData = gson.fromJson(body, Map.class);
             String originalUrl = requestData.get("url");
-
             String title = requestData.get("title");
+            String visibility = requestData.getOrDefault("visibility", "PRIVATE").toUpperCase();
+
+            if (!"PUBLIC".equals(visibility) && !"PRIVATE".equals(visibility)) {
+                visibility = "PRIVATE";
+            }
 
             if (originalUrl == null || originalUrl.trim().isEmpty()) {
                 return createErrorResponse(400, "URL은 필수 항목입니다.", headers);
@@ -108,6 +112,7 @@ public class ShortenHandler implements RequestHandler<APIGatewayProxyRequestEven
                 item.put("originalUrl", AttributeValue.builder().s(originalUrl).build());
                 item.put("createdAt", AttributeValue.builder().s(Instant.now().toString()).build());
                 item.put("clickCount", AttributeValue.builder().n("0").build());
+                item.put("visibility", AttributeValue.builder().s(visibility).build());
 
                 if (title != null && !title.isEmpty()) {
                     item.put("title", AttributeValue.builder().s(title).build());
