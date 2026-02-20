@@ -8,10 +8,7 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import software.amazon.awssdk.http.urlconnection.UrlConnectionHttpClient;
 import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
-import software.amazon.awssdk.services.dynamodb.model.AttributeValue;
-import software.amazon.awssdk.services.dynamodb.model.GetItemRequest;
-import software.amazon.awssdk.services.dynamodb.model.QueryRequest;
-import software.amazon.awssdk.services.dynamodb.model.QueryResponse;
+import software.amazon.awssdk.services.dynamodb.model.*;
 import software.amazon.awssdk.regions.Region;
 
 import java.net.URI;
@@ -116,7 +113,30 @@ public class StatsHandler implements RequestHandler<APIGatewayProxyRequestEvent,
                 calculatedStats.put("title", urlItem.get("title").s());
             }
 
-            String aiInsight = getAiInsight(calculatedStats, context);
+            String aiInsight;
+            boolean needsNewAnalysis = true;
+
+            if (urlItem.containsKey("aiInsight") && urlItem.containsKey("lastAnalyzed")) {
+                try {
+                    Instant lastAnalyzed = Instant.parse(urlItem.get("lastAnalyzed").s());
+                    if (Duration.between(lastAnalyzed, Instant.now()).toHours() < 24) {
+                        aiInsight = urlItem.get("aiInsight").s();
+                        needsNewAnalysis = false;
+                        context.getLogger().log("Using cached AI insight for: " + shortId);
+                    } else {
+                        aiInsight = getAiInsight(calculatedStats, context);
+                    }
+                } catch (Exception e) {
+                    aiInsight = getAiInsight(calculatedStats, context);
+                }
+            } else {
+                aiInsight = getAiInsight(calculatedStats, context);
+            }
+
+            if (needsNewAnalysis && aiInsight != null && !aiInsight.contains("오류") && !aiInsight.contains("설정되지 않았습니다")) {
+                updateCachedInsight(shortId, aiInsight, context);
+            }
+            
             calculatedStats.put("aiInsight", aiInsight);
 
             Map<String, Object> responseBody = new HashMap<>();
@@ -129,11 +149,38 @@ public class StatsHandler implements RequestHandler<APIGatewayProxyRequestEvent,
 
         } catch (Exception e) {
             context.getLogger().log("Error: " + e.getMessage());
-            e.printStackTrace();
-            return createErrorResponse(500, "Internal Server Error: " + e.getMessage(), headers);
+            return createErrorResponse(500, "Internal Server Error", headers);
         }
 
         return response;
+    }
+
+    private void updateCachedInsight(String shortId, String insight, Context context) {
+        try {
+            Map<String, AttributeValue> key = new HashMap<>();
+            key.put("shortId", AttributeValue.builder().s(shortId).build());
+
+            Map<String, AttributeValueUpdate> updates = new HashMap<>();
+            updates.put("aiInsight", AttributeValueUpdate.builder()
+                    .value(AttributeValue.builder().s(insight).build())
+                    .action(AttributeAction.PUT)
+                    .build());
+            updates.put("lastAnalyzed", AttributeValueUpdate.builder()
+                    .value(AttributeValue.builder().s(Instant.now().toString()).build())
+                    .action(AttributeAction.PUT)
+                    .build());
+
+            UpdateItemRequest updateRequest = UpdateItemRequest.builder()
+                    .tableName(this.urlsTableName)
+                    .key(key)
+                    .attributeUpdates(updates)
+                    .build();
+
+            ddb.updateItem(updateRequest);
+            context.getLogger().log("Cached new AI insight for: " + shortId);
+        } catch (Exception e) {
+            context.getLogger().log("Failed to cache AI insight: " + e.getMessage());
+        }
     }
 
     private String getAiInsight(Map<String, Object> stats, Context context) {
@@ -143,12 +190,12 @@ public class StatsHandler implements RequestHandler<APIGatewayProxyRequestEvent,
 
         try {
             String prompt = String.format(
-                "다음 URL 단축 서비스의 클릭 통계 데이터를 분석하여 사용자 행동에 대한 짧은 인사이트를 한 문장(한국어)으로 작성해 주세요.\n" +
-                "데이터:\n" +
-                "- 총 클릭: %s\n" +
-                "- 가장 많이 유입된 시간: %s시\n" +
-                "- 주요 유입 경로: %s\n" +
-                "- 일별 추이: %s\n" +
+                "다음 URL 단축 서비스의 클릭 통계 데이터를 분석하여 사용자 행동에 대한 짧은 인사이트를 한 문장(한국어)으로 작성해 주세요.\\n" +
+                "데이터:\\n" +
+                "- 총 클릭: %s\\n" +
+                "- 가장 많이 유입된 시간: %s시\\n" +
+                "- 주요 유입 경로: %s\\n" +
+                "- 일별 추이: %s\\n" +
                 "주의: 데이터가 적으면 '충분한 데이터가 쌓이지 않았습니다'라고 답변하세요. 정중하고 친근한 말투를 사용하세요.",
                 stats.get("clicksByReferer") != null ? stats.get("clicksByReferer").toString() : "없음",
                 stats.get("peakHour"),
@@ -158,7 +205,7 @@ public class StatsHandler implements RequestHandler<APIGatewayProxyRequestEvent,
 
             String requestBody = String.format(
                 "{\"contents\": [{\"parts\":[{\"text\": \"%s\"}]}]}",
-                prompt.replace("\"", "\\\"").replace("\n", "\\n")
+                prompt.replace("\"", "\\\"")
             );
 
             String apiUrl = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=" + this.geminiApiKey;
@@ -200,18 +247,13 @@ public class StatsHandler implements RequestHandler<APIGatewayProxyRequestEvent,
 
             try {
                 ZonedDateTime dt = ZonedDateTime.parse(timestamp);
-
                 int hour = dt.getHour();
                 clicksByHour.merge(hour, 1, Integer::sum);
-
                 String day = dt.format(DateTimeFormatter.ISO_LOCAL_DATE);
                 clicksByDay.merge(day, 1, Integer::sum);
-
                 String domain = extractDomain(referer);
                 clicksByReferer.merge(domain, 1, Integer::sum);
-
-            } catch (Exception e) {
-            }
+            } catch (Exception e) {}
         }
 
         Integer peakHour = clicksByHour.entrySet().stream()
@@ -236,16 +278,12 @@ public class StatsHandler implements RequestHandler<APIGatewayProxyRequestEvent,
     }
 
     private String extractDomain(String url) {
-        if (url == null || url.equals("direct") || url.isEmpty()) {
-            return "direct";
-        }
+        if (url == null || url.equals("direct") || url.isEmpty()) return "direct";
         try {
             URI uri = new URI(url);
             String domain = uri.getHost();
             return domain != null ? domain : "unknown";
-        } catch (Exception e) {
-            return "unknown";
-        }
+        } catch (Exception e) { return "unknown"; }
     }
 
     private APIGatewayProxyResponseEvent createErrorResponse(int statusCode, String message, Map<String, String> headers) {
