@@ -247,7 +247,7 @@ public class ShortenHandler implements RequestHandler<APIGatewayProxyRequestEven
             }
             """.formatted(prompt);
 
-        String apiUrl = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=" + this.geminiApiKey;
+        String apiUrl = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=" + this.geminiApiKey;
 
         try {
             HttpRequest request = HttpRequest.newBuilder()
