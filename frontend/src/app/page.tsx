@@ -14,10 +14,10 @@ const translations = {
   ko: {
     subtitle: "쉽고 빠르고 안전한 지능형 URL 단축 서비스",
     createTitle: "단축 URL 생성",
-    originalUrlLabel: "원본 URL*",
+    originalUrlLabel: "원본 URL",
     titleLabel: "제목 (선택 사항)",
     visibilityLabel: "공개 여부 설정",
-    visibilityDesc: "최근 URL 대시보드에 이 URL을 노출합니다",
+    visibilityDesc: "공개 대시보드에 이 URL을 노출합니다",
     shortenBtn: "지금 줄이기",
     processing: "처리 중...",
     successTitle: "성공! 단축 URL:",
@@ -26,11 +26,11 @@ const translations = {
     statsDesc: "단축 ID를 입력하여 상세 클릭 분석과 AI 인사이트를 확인하세요.",
     statsPlaceholder: "단축 ID 입력 (예: ab86c836)",
     viewStatsBtn: "통계 보기",
-    dashboardTitle: "최근 URL 대시보드",
+    dashboardTitle: "공개 대시보드",
     loadingLinks: "최근 링크를 불러오는 중...",
     noLinks: "공개된 링크가 없습니다.",
     createOne: "첫 번째 링크를 만들어보세요!",
-    visitOriginal: "원본 주소 방문",
+    visitOriginal: "원본 방문",
     clicks: "클릭",
     created: "생성일",
     copyAlert: "복사되었습니다!",
@@ -38,7 +38,7 @@ const translations = {
   en: {
     subtitle: "Simple, Powerful, and Secure URL Shortener",
     createTitle: "Create Short URL",
-    originalUrlLabel: "Original URL*",
+    originalUrlLabel: "Original URL",
     titleLabel: "Title (Optional)",
     visibilityLabel: "Public Visibility",
     visibilityDesc: "Show this URL in the public dashboard",
@@ -96,7 +96,6 @@ export default function Home() {
     } catch (err) {
       console.error("Failed to fetch public URLs:", err);
     } finally {
-      // Small delay for smoother transition
       setTimeout(() => setDashboardLoading(false), 500);
     }
   }, [apiBaseUrl]);
@@ -151,7 +150,6 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-brand-white flex flex-col items-center py-12 px-4 font-sans text-brand-gray">
       
-      {/* Subtitle Section */}
       <div className="text-center mb-12">
         <h1 className="text-5xl font-black text-brand-navy mb-4 tracking-tight drop-shadow-sm italic">LessURL</h1>
         <p className="text-slate-500 text-lg font-medium">{t.subtitle}</p>
@@ -159,7 +157,6 @@ export default function Home() {
 
       <div className="w-full max-w-5xl grid grid-cols-1 lg:grid-cols-2 gap-12 items-start">
         
-        {/* Shortener Form Card */}
         <section className="bg-white p-8 rounded-2xl shadow-xl shadow-slate-200/50 border border-slate-100 h-full">
           <h2 className="text-2xl font-bold mb-6 flex items-center gap-2">
             <span className="bg-orange-50 text-brand-orange p-2 rounded-lg">🔗</span>
@@ -168,7 +165,9 @@ export default function Home() {
           
           <form onSubmit={handleSubmit} className="space-y-5">
             <div>
-              <label className="block text-brand-gray text-sm font-bold mb-2">{t.originalUrlLabel}</label>
+              <label className="block text-brand-gray text-sm font-bold mb-2">
+                {t.originalUrlLabel} <span className="text-red-500">*</span>
+              </label>
               <input
                 type="url"
                 value={originalUrl}
@@ -224,7 +223,6 @@ export default function Home() {
           {error && <div className="mt-6 p-4 bg-red-50 text-red-600 rounded-xl border border-red-100 text-sm font-medium">⚠️ {error}</div>}
         </section>
 
-        {/* Public Dashboard Card */}
         <section className="bg-white p-8 rounded-2xl shadow-xl shadow-slate-200/50 border border-slate-100 flex flex-col h-full max-h-[700px]">
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-2xl font-bold flex items-center gap-2">
@@ -260,7 +258,7 @@ export default function Home() {
                 <div key={url.shortId} className="group p-4 rounded-xl border border-slate-50 hover:border-orange-200 hover:bg-orange-50/30 transition-all">
                   <div className="flex justify-between items-start mb-2">
                     <h3 className="font-bold text-brand-navy truncate pr-4">{url.title || "Untitled Link"}</h3>
-                    <span className="bg-white px-2 py-1 rounded text-[10px] font-bold text-slate-400 border border-slate-100 shadow-sm whitespace-nowrap">
+                    <span className="bg-brand-orange/10 px-3 py-1.5 rounded-lg text-xs font-black text-brand-orange border border-brand-orange/20 shadow-sm whitespace-nowrap">
                       {url.clickCount} {t.clicks}
                     </span>
                   </div>
@@ -299,7 +297,6 @@ export default function Home() {
           </div>
         </section>
 
-        {/* Statistics Lookup Card */}
         <section className="bg-white p-8 rounded-2xl shadow-xl shadow-slate-200/50 border border-slate-100 lg:col-span-2">
           <div className="flex flex-col md:flex-row items-center justify-between gap-6">
             <div className="flex items-center gap-4">

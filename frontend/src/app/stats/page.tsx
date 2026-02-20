@@ -21,7 +21,7 @@ interface StatsData {
 
 const translations = {
   ko: {
-    backBtn: "← 단축기로 돌아가기",
+    backBtn: "← 메인화면으로 돌아가기",
     loading: "통계 분석 중...",
     errorTitle: "오류 발생",
     goHome: "홈으로 돌아가기",
@@ -33,7 +33,7 @@ const translations = {
     refererTitle: "🔗 주요 유입 경로",
     noRefererData: "유입 경로 데이터가 없습니다.",
     proTipTitle: "전문가 팁 💡",
-    proTipDesc: (hour: number) => `당신의 오디언스는 주로 **${hour}:00** 시에 가장 활발합니다. 다음 링크는 이 시간대에 맞춰 공유해보세요!`,
+    proTipDesc: (hour: number) => `당신의 오디언스는 주로 ${hour}:00 시에 가장 활발합니다. 다음 링크는 이 시간대에 맞춰 공유해보세요!`,
     clicks: "클릭",
     initializing: "대시보드 초기화 중...",
   },
@@ -50,7 +50,7 @@ const translations = {
     refererTitle: "🔗 Top Referers",
     noRefererData: "No referer data.",
     proTipTitle: "Pro Tip 💡",
-    proTipDesc: (hour: number) => `Most of your audience visits during **${hour}:00**. Consider posting your next link around this time for maximum engagement!`,
+    proTipDesc: (hour: number) => `Most of your audience visits during ${hour}:00. Consider posting your next link around this time for maximum engagement!`,
     clicks: "clicks",
     initializing: "Initializing Dashboard...",
   }
