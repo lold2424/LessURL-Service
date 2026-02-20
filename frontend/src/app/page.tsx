@@ -17,7 +17,7 @@ const translations = {
     originalUrlLabel: "원본 URL*",
     titleLabel: "제목 (선택 사항)",
     visibilityLabel: "공개 여부 설정",
-    visibilityDesc: "최근 URL 대시보드에 이 URL을 보이게 합니다.",
+    visibilityDesc: "최근 URL 대시보드에 이 URL을 노출합니다",
     shortenBtn: "지금 줄이기",
     processing: "처리 중...",
     successTitle: "성공! 단축 URL:",
@@ -30,7 +30,7 @@ const translations = {
     loadingLinks: "최근 링크를 불러오는 중...",
     noLinks: "공개된 링크가 없습니다.",
     createOne: "첫 번째 링크를 만들어보세요!",
-    visitOriginal: "원본 방문",
+    visitOriginal: "원본 주소 방문",
     clicks: "클릭",
     created: "생성일",
     copyAlert: "복사되었습니다!",
@@ -96,7 +96,8 @@ export default function Home() {
     } catch (err) {
       console.error("Failed to fetch public URLs:", err);
     } finally {
-      setDashboardLoading(false);
+      // Small delay for smoother transition
+      setTimeout(() => setDashboardLoading(false), 500);
     }
   }, [apiBaseUrl]);
 
@@ -152,7 +153,7 @@ export default function Home() {
       
       {/* Subtitle Section */}
       <div className="text-center mb-12">
-        <h1 className="text-5xl font-black text-brand-navy mb-4 tracking-tight drop-shadow-sm">LessURL</h1>
+        <h1 className="text-5xl font-black text-brand-navy mb-4 tracking-tight drop-shadow-sm italic">LessURL</h1>
         <p className="text-slate-500 text-lg font-medium">{t.subtitle}</p>
       </div>
 
@@ -230,14 +231,29 @@ export default function Home() {
               <span className="bg-emerald-50 text-emerald-600 p-2 rounded-lg">📊</span>
               {t.dashboardTitle}
             </h2>
-            <button onClick={fetchPublicUrls} className="text-slate-400 hover:text-brand-orange transition-colors" title="Refresh">🔄</button>
+            <button 
+              onClick={fetchPublicUrls} 
+              className={`p-2 rounded-lg transition-all ${dashboardLoading ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'hover:bg-orange-50 text-slate-400 hover:text-brand-orange'}`}
+              disabled={dashboardLoading}
+              title="Refresh"
+            >
+              <svg 
+                className={`w-5 h-5 ${dashboardLoading ? 'animate-spin' : ''}`} 
+                fill="none" stroke="currentColor" viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+            </button>
           </div>
 
           <div className="flex-1 overflow-y-auto pr-2 space-y-4">
             {dashboardLoading ? (
-              <div className="flex flex-col items-center justify-center py-20 text-slate-400">
-                <div className="animate-spin mb-4 text-3xl text-brand-orange">⌛</div>
-                <p>{t.loadingLinks}</p>
+              <div className="flex flex-col items-center justify-center py-32 text-slate-400">
+                <div className="relative w-16 h-16 mb-6">
+                  <div className="absolute inset-0 border-4 border-orange-100 rounded-full"></div>
+                  <div className="absolute inset-0 border-4 border-brand-orange rounded-full border-t-transparent animate-spin"></div>
+                </div>
+                <p className="font-bold text-brand-navy/60 animate-pulse">{t.loadingLinks}</p>
               </div>
             ) : publicUrls.length > 0 ? (
               publicUrls.map((url) => (
@@ -248,11 +264,28 @@ export default function Home() {
                       {url.clickCount} {t.clicks}
                     </span>
                   </div>
-                  <p className="text-sm text-brand-orange font-mono mb-3 truncate">{url.shortId}</p>
+                  <div className="mb-3">
+                    <a 
+                      href={`${apiBaseUrl}/${url.shortId}`} 
+                      target="_blank" 
+                      rel="noopener noreferrer" 
+                      className="text-sm text-brand-orange font-bold font-mono hover:underline decoration-orange-300 transition-all"
+                    >
+                      {url.shortId}
+                    </a>
+                  </div>
                   <div className="flex justify-between items-center">
                     <span className="text-[11px] text-slate-400 font-medium italic">{t.created}: {formatDate(url.createdAt)}</span>
-                    <a href={`${apiBaseUrl}/${url.shortId}`} target="_blank" rel="noopener noreferrer" className="text-[11px] font-bold text-slate-500 hover:text-brand-orange underline decoration-slate-200 hover:decoration-orange-200">
-                      {t.visitOriginal}
+                    <a 
+                      href={`${apiBaseUrl}/${url.shortId}`} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-brand-orange/30 text-[11px] font-black text-brand-orange hover:bg-brand-orange hover:text-white transition-all shadow-sm active:scale-95 group/btn"
+                    >
+                      <span>{t.visitOriginal}</span>
+                      <svg className="w-3 h-3 transition-transform group-hover/btn:translate-x-0.5 group-hover/btn:-translate-y-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                      </svg>
                     </a>
                   </div>
                 </div>
