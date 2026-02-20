@@ -23,3 +23,6 @@ Thumbs.db
 local-env.json
 event.json
 *~
+*.bat
+docker-compose.yml
+docker/
