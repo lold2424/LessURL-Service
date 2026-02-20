@@ -24,3 +24,6 @@ local-env.json
 event.json
 *~
 api-requests.http
+*.bat
+docker-compose.yml
+docker/
