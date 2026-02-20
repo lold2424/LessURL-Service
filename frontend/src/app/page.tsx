@@ -11,13 +11,14 @@ interface PublicUrl {
 }
 
 export default function Home() {
-  // --- States for Shortening ---
   const [originalUrl, setOriginalUrl] = useState<string>("");
   const [title, setTitle] = useState<string>("");
   const [visibility, setVisibility] = useState<"PUBLIC" | "PRIVATE">("PRIVATE");
   const [shortenedUrl, setShortenedUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
+
+  const [searchId, setSearchId] = useState<string>("");
 
   const [publicUrls, setPublicUrls] = useState<PublicUrl[]>([]);
   const [dashboardLoading, setDashboardLoading] = useState<boolean>(false);
@@ -191,8 +192,36 @@ export default function Home() {
           )}
         </section>
 
+        {/* Statistics Lookup Card */}
+        <section className="bg-white p-8 rounded-2xl shadow-xl border border-slate-100 lg:col-span-2">
+          <div className="flex flex-col md:flex-row items-center justify-between gap-6">
+            <div className="flex items-center gap-4">
+              <div className="bg-indigo-100 text-indigo-600 p-3 rounded-2xl text-2xl">📈</div>
+              <div>
+                <h2 className="text-xl font-bold text-slate-800">Check Your URL Statistics</h2>
+                <p className="text-sm text-slate-500 text-balance">Enter your short ID to see detailed click analysis and AI insights.</p>
+              </div>
+            </div>
+            <div className="flex w-full md:w-auto gap-2">
+              <input
+                type="text"
+                value={searchId}
+                onChange={(e) => setSearchId(e.target.value)}
+                placeholder="Enter short ID (e.g. ab86c836)"
+                className="flex-1 md:w-64 px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all"
+              />
+              <button
+                onClick={() => searchId && (window.location.href = `/stats?id=${searchId.split('/').pop()}`)}
+                className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-6 rounded-xl transition-all shadow-lg shadow-indigo-100"
+              >
+                View Stats
+              </button>
+            </div>
+          </div>
+        </section>
+
         {/* Public Dashboard Card */}
-        <section className="bg-white p-8 rounded-2xl shadow-xl border border-slate-100 flex flex-col h-full max-h-[700px]">
+        <section className="bg-white p-8 rounded-2xl shadow-xl border border-slate-100 flex flex-col h-full max-h-[700px] lg:col-span-2">
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-2xl font-bold flex items-center gap-2">
               <span className="bg-emerald-100 text-emerald-600 p-2 rounded-lg">📊</span>
