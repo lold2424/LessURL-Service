@@ -207,12 +207,12 @@ Resources:
         - Protocol: email
           Endpoint: "lold2424@gmail.com"
 
-  # Lambda Errors: 에러 > 10/분 일 때 알람 발송
-  LambdaErrorAlarm:
+  # Lambda Errors: 에러 > 10/분 일 때 알람 발송 (Shorten)
+  ShortenErrorAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmName: !Sub "${AWS::StackName}-lambda-errors"
-      AlarmDescription: "Lambda Errors > 10/min"
+      AlarmName: !Sub "${AWS::StackName}-shorten-errors"
+      AlarmDescription: "ShortenFunction Errors > 10/min"
       MetricName: Errors
       Namespace: AWS/Lambda
       Statistic: Sum
@@ -226,12 +226,12 @@ Resources:
       AlarmActions:
         - !Ref MonitoringTopic
 
-  # Lambda Duration: 실행시간 > 3초 (3000ms) 일 때 알람 발송
-  LambdaDurationAlarm:
+  # Lambda Duration: 실행시간 > 3초 (3000ms) 일 때 알람 발송 (Shorten)
+  ShortenDurationAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmName: !Sub "${AWS::StackName}-lambda-duration"
-      AlarmDescription: "Lambda Duration > 3s"
+      AlarmName: !Sub "${AWS::StackName}-shorten-duration"
+      AlarmDescription: "ShortenFunction Duration > 3s"
       MetricName: Duration
       Namespace: AWS/Lambda
       Statistic: Average
@@ -242,6 +242,80 @@ Resources:
       Dimensions:
         - Name: FunctionName
           Value: !Ref ShortenFunction
+      AlarmActions:
+        - !Ref MonitoringTopic
+
+  # RedirectFunction 알람
+  RedirectErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "${AWS::StackName}-redirect-errors"
+      AlarmDescription: "RedirectFunction Errors > 10/min"
+      MetricName: Errors
+      Namespace: AWS/Lambda
+      Statistic: Sum
+      Period: 60
+      EvaluationPeriods: 1
+      Threshold: 10
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref RedirectFunction
+      AlarmActions:
+        - !Ref MonitoringTopic
+
+  RedirectDurationAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "${AWS::StackName}-redirect-duration"
+      AlarmDescription: "RedirectFunction Duration > 3s"
+      MetricName: Duration
+      Namespace: AWS/Lambda
+      Statistic: Average
+      Period: 60
+      EvaluationPeriods: 1
+      Threshold: 3000
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref RedirectFunction
+      AlarmActions:
+        - !Ref MonitoringTopic
+
+  # StatsFunction 알람
+  StatsErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "${AWS::StackName}-stats-errors"
+      AlarmDescription: "StatsFunction Errors > 10/min"
+      MetricName: Errors
+      Namespace: AWS/Lambda
+      Statistic: Sum
+      Period: 60
+      EvaluationPeriods: 1
+      Threshold: 10
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref StatsFunction
+      AlarmActions:
+        - !Ref MonitoringTopic
+
+  StatsDurationAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "${AWS::StackName}-stats-duration"
+      AlarmDescription: "StatsFunction Duration > 3s"
+      MetricName: Duration
+      Namespace: AWS/Lambda
+      Statistic: Average
+      Period: 60
+      EvaluationPeriods: 1
+      Threshold: 3000
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref StatsFunction
       AlarmActions:
         - !Ref MonitoringTopic
 
