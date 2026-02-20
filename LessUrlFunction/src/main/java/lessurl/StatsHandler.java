@@ -15,6 +15,10 @@ import software.amazon.awssdk.services.dynamodb.model.QueryResponse;
 import software.amazon.awssdk.regions.Region;
 
 import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
@@ -27,11 +31,14 @@ public class StatsHandler implements RequestHandler<APIGatewayProxyRequestEvent,
     private final Gson gson;
     private final String urlsTableName;
     private final String clicksTableName;
+    private final String geminiApiKey;
+    private final HttpClient httpClient;
 
     public StatsHandler() {
         this.gson = new GsonBuilder().setPrettyPrinting().create();
         this.urlsTableName = System.getenv("URLS_TABLE");
         this.clicksTableName = System.getenv("CLICKS_TABLE");
+        this.geminiApiKey = System.getenv("GEMINI_API_KEY");
 
         String dynamoDbEndpoint = System.getenv("DYNAMODB_ENDPOINT");
         String awsRegion = System.getenv("AWS_REGION");
@@ -45,13 +52,19 @@ public class StatsHandler implements RequestHandler<APIGatewayProxyRequestEvent,
                     .region(Region.of(awsRegion));
         }
         this.ddb = clientBuilder.build();
+        this.httpClient = HttpClient.newBuilder()
+                .version(HttpClient.Version.HTTP_1_1)
+                .connectTimeout(Duration.ofSeconds(10))
+                .build();
     }
 
-    protected StatsHandler(DynamoDbClient ddb, Gson gson, String urlsTableName, String clicksTableName) {
+    protected StatsHandler(DynamoDbClient ddb, Gson gson, String urlsTableName, String clicksTableName, String geminiApiKey, HttpClient httpClient) {
         this.ddb = ddb;
         this.gson = gson;
         this.urlsTableName = urlsTableName;
         this.clicksTableName = clicksTableName;
+        this.geminiApiKey = geminiApiKey;
+        this.httpClient = httpClient;
     }
 
     @Override
@@ -59,7 +72,7 @@ public class StatsHandler implements RequestHandler<APIGatewayProxyRequestEvent,
         APIGatewayProxyResponseEvent response = new APIGatewayProxyResponseEvent();
         Map<String, String> headers = new HashMap<>();
         headers.put("Content-Type", "application/json");
-        headers.put("Access-Control-Allow-Origin", "*");
+        headers.put("Access-Control-Allow-Origin", System.getenv("CORS_ALLOWED_ORIGIN") != null ? System.getenv("CORS_ALLOWED_ORIGIN") : "*");
 
         try {
             String shortId = input.getPathParameters().get("shortId");
@@ -103,6 +116,9 @@ public class StatsHandler implements RequestHandler<APIGatewayProxyRequestEvent,
                 calculatedStats.put("title", urlItem.get("title").s());
             }
 
+            String aiInsight = getAiInsight(calculatedStats, context);
+            calculatedStats.put("aiInsight", aiInsight);
+
             Map<String, Object> responseBody = new HashMap<>();
             responseBody.put("clicks", Integer.parseInt(urlItem.get("clickCount").n()));
             responseBody.put("stats", calculatedStats);
@@ -114,10 +130,63 @@ public class StatsHandler implements RequestHandler<APIGatewayProxyRequestEvent,
         } catch (Exception e) {
             context.getLogger().log("Error: " + e.getMessage());
             e.printStackTrace();
-            return createErrorResponse(500, "Internal Server Error", headers);
+            return createErrorResponse(500, "Internal Server Error: " + e.getMessage(), headers);
         }
 
         return response;
+    }
+
+    private String getAiInsight(Map<String, Object> stats, Context context) {
+        if (this.geminiApiKey == null || this.geminiApiKey.isEmpty()) {
+            return "AI 분석이 설정되지 않았습니다.";
+        }
+
+        try {
+            String prompt = String.format(
+                "다음 URL 단축 서비스의 클릭 통계 데이터를 분석하여 사용자 행동에 대한 짧은 인사이트를 한 문장(한국어)으로 작성해 주세요.\n" +
+                "데이터:\n" +
+                "- 총 클릭: %s\n" +
+                "- 가장 많이 유입된 시간: %s시\n" +
+                "- 주요 유입 경로: %s\n" +
+                "- 일별 추이: %s\n" +
+                "주의: 데이터가 적으면 '충분한 데이터가 쌓이지 않았습니다'라고 답변하세요. 정중하고 친근한 말투를 사용하세요.",
+                stats.get("clicksByReferer") != null ? stats.get("clicksByReferer").toString() : "없음",
+                stats.get("peakHour"),
+                stats.get("topReferer"),
+                stats.get("clicksByDay")
+            );
+
+            String requestBody = String.format(
+                "{\"contents\": [{\"parts\":[{\"text\": \"%s\"}]}]}",
+                prompt.replace("\"", "\\\"").replace("\n", "\\n")
+            );
+
+            String apiUrl = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=" + this.geminiApiKey;
+
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(apiUrl))
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(requestBody))
+                    .build();
+
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+
+            if (response.statusCode() != 200) {
+                context.getLogger().log("Gemini API Error: " + response.statusCode() + " " + response.body());
+                return "분석 중 오류가 발생했습니다.";
+            }
+
+            Map<String, Object> responseMap = gson.fromJson(response.body(), Map.class);
+            List<Map<String, Object>> candidates = (List<Map<String, Object>>) responseMap.get("candidates");
+            Map<String, Object> firstCandidate = candidates.get(0);
+            Map<String, Object> content = (Map<String, Object>) firstCandidate.get("content");
+            List<Map<String, Object>> parts = (List<Map<String, Object>>) content.get("parts");
+            return ((String) parts.get(0).get("text")).trim();
+
+        } catch (Exception e) {
+            context.getLogger().log("Gemini insight generation failed: " + e.getMessage());
+            return "현재 분석을 수행할 수 없습니다.";
+        }
     }
 
     private Map<String, Object> calculateStats(List<Map<String, AttributeValue>> clicks) {
