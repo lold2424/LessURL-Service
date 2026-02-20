@@ -101,7 +101,7 @@ public class ShortenHandler implements RequestHandler<APIGatewayProxyRequestEven
                 return createErrorResponse(400, "유해 URL이 감지되었습니다.", headers);
             }
 
-
+            String baseUrl = System.getenv("BASE_URL");
             String shortId = null;
             int maxRetries = 5;
             for (int i = 0; i < maxRetries; i++) {
@@ -135,13 +135,19 @@ public class ShortenHandler implements RequestHandler<APIGatewayProxyRequestEven
                 }
             }
 
-            String domain = input.getHeaders().get("Host");
-            String stage = input.getRequestContext().getStage();
-            String protocol = input.getHeaders().getOrDefault("X-Forwarded-Proto", "https");
-            String shortUrl = String.format("%s://%s/%s", protocol, domain, shortId);
-
-            if (!domain.contains("localhost")) {
-                shortUrl = String.format("%s://%s/%s/%s", protocol, domain, stage, shortId);
+            String shortUrl;
+            if (baseUrl != null && !baseUrl.isEmpty()) {
+                shortUrl = String.format("%s/%s", baseUrl, shortId);
+            } else {
+                String domain = input.getHeaders().get("Host");
+                String stage = input.getRequestContext().getStage();
+                String protocol = input.getHeaders().getOrDefault("X-Forwarded-Proto", "https");
+                
+                if (domain.contains("localhost") || domain.contains("127.0.0.1")) {
+                    shortUrl = String.format("http://%s/%s", domain, shortId);
+                } else {
+                    shortUrl = String.format("%s://%s/%s/%s", protocol, domain, stage, shortId);
+                }
             }
 
             Map<String, String> responseBody = new HashMap<>();

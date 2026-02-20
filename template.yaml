@@ -8,6 +8,7 @@ Description: >
 Parameters:
   CorsAllowedOrigin:
     Type: String
+    Default: "http://localhost:3000"
     Description: API에 대한 CORS 헤더 값
   GeminiApiKey:
     Type: String
@@ -17,6 +18,10 @@ Parameters:
     Type: String
     Description: Google Safe Browsing API 키
     NoEcho: true
+  BaseUrl:
+    Type: String
+    Default: ""
+    Description: "단축 URL의 베이스 도메인"
 
 Globals:
   Function:
@@ -41,7 +46,7 @@ Resources:
       Cors:
         AllowMethods: "'GET,POST,OPTIONS'"
         AllowHeaders: "'Content-Type'"
-        AllowOrigin: !Sub "'${CorsAllowedOrigin}'"
+        AllowOrigin: "'*'"
   # DynamoDB Tables
   UrlsTable:
     Type: AWS::DynamoDB::Table
@@ -97,6 +102,7 @@ Resources:
         Variables:
           GEMINI_API_KEY: !Ref GeminiApiKey
           SAFE_BROWSING_API_KEY: !Ref SafeBrowsingApiKey
+          BASE_URL: !Ref BaseUrl
       Events:
         ApiEvent:
           Type: Api

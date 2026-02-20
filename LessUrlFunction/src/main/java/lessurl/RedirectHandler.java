@@ -95,38 +95,45 @@ public class RedirectHandler implements RequestHandler<APIGatewayProxyRequestEve
     }
     
     private void updateClickStats(String shortId, APIGatewayProxyRequestEvent input, LambdaLogger logger) {
-        Map<String, AttributeValue> key = Map.of("shortId", AttributeValue.builder().s(shortId).build());
+        try {
+            Map<String, AttributeValue> key = Map.of("shortId", AttributeValue.builder().s(shortId).build());
 
-        ddb.updateItem(UpdateItemRequest.builder()
-                .tableName(this.urlsTable)
-                .key(key)
-                .updateExpression("SET clickCount = if_not_exists(clickCount, :zero) + :inc")
-                .expressionAttributeValues(Map.of(
-                        ":zero", AttributeValue.builder().n("0").build(),
-                        ":inc", AttributeValue.builder().n("1").build()
-                ))
-                .build());
+            ddb.updateItem(UpdateItemRequest.builder()
+                    .tableName(this.urlsTable)
+                    .key(key)
+                    .updateExpression("ADD clickCount :inc")
+                    .expressionAttributeValues(Map.of(
+                            ":inc", AttributeValue.builder().n("1").build()
+                    ))
+                    .build());
+            logger.log("[Success] Incremented clickCount for " + shortId);
 
-        String ip = "unknown";
-        if (input.getRequestContext() != null && input.getRequestContext().getIdentity() != null) {
-            ip = input.getRequestContext().getIdentity().getSourceIp();
+            String ip = "unknown";
+            if (input.getRequestContext() != null && input.getRequestContext().getIdentity() != null) {
+                ip = input.getRequestContext().getIdentity().getSourceIp();
+            }
+
+            Map<String, String> headers = input.getHeaders() != null ? input.getHeaders() : new HashMap<>();
+            String userAgent = headers.getOrDefault("User-Agent", "unknown");
+            String referer = headers.getOrDefault("Referer", "direct");
+
+            Map<String, AttributeValue> logItem = new HashMap<>();
+            logItem.put("shortId", AttributeValue.builder().s(shortId).build());
+            logItem.put("timestamp", AttributeValue.builder().s(Instant.now().toString()).build());
+            logItem.put("ip", AttributeValue.builder().s(hashIp(ip)).build());
+            logItem.put("userAgent", AttributeValue.builder().s(userAgent).build());
+            logItem.put("referer", AttributeValue.builder().s(referer).build());
+
+            ddb.putItem(PutItemRequest.builder()
+                    .tableName(this.clicksTable)
+                    .item(logItem)
+                    .build());
+            logger.log("[Success] Logged click details for " + shortId);
+            
+        } catch (Exception e) {
+            logger.log("[Error] updateClickStats failed: " + e.getMessage());
+            e.printStackTrace();
         }
-
-        Map<String, String> headers = input.getHeaders() != null ? input.getHeaders() : new HashMap<>();
-        String userAgent = headers.getOrDefault("User-Agent", "unknown");
-        String referer = headers.getOrDefault("Referer", "direct");
-
-        Map<String, AttributeValue> logItem = new HashMap<>();
-        logItem.put("shortId", AttributeValue.builder().s(shortId).build());
-        logItem.put("timestamp", AttributeValue.builder().s(Instant.now().toString()).build());
-        logItem.put("ip", AttributeValue.builder().s(hashIp(ip)).build());
-        logItem.put("userAgent", AttributeValue.builder().s(userAgent).build());
-        logItem.put("referer", AttributeValue.builder().s(referer).build());
-
-        ddb.putItem(PutItemRequest.builder()
-                .tableName(this.clicksTable)
-                .item(logItem)
-                .build());
     }
 
     private String hashIp(String ip) {
