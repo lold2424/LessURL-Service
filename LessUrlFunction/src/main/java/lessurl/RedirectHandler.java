@@ -28,10 +28,12 @@ public class RedirectHandler implements RequestHandler<APIGatewayProxyRequestEve
     private final DynamoDbClient ddb;
     private final String urlsTable;
     private final String clicksTable;
+    private final String trendInsightsTable;
 
     public RedirectHandler() {
         this.urlsTable = System.getenv("URLS_TABLE");
         this.clicksTable = System.getenv("CLICKS_TABLE");
+        this.trendInsightsTable = System.getenv("TREND_INSIGHTS_TABLE");
 
         String dynamoDbEndpoint = System.getenv("DYNAMODB_ENDPOINT");
         String awsRegion = System.getenv("AWS_REGION");
@@ -47,10 +49,11 @@ public class RedirectHandler implements RequestHandler<APIGatewayProxyRequestEve
         this.ddb = clientBuilder.build();
     }
 
-    protected RedirectHandler(DynamoDbClient ddb, String urlsTable, String clicksTable) {
+    protected RedirectHandler(DynamoDbClient ddb, String urlsTable, String clicksTable, String trendInsightsTable) {
         this.ddb = ddb;
         this.urlsTable = urlsTable;
         this.clicksTable = clicksTable;
+        this.trendInsightsTable = trendInsightsTable;
     }
 
     @Override
@@ -116,6 +119,15 @@ public class RedirectHandler implements RequestHandler<APIGatewayProxyRequestEve
             Map<String, String> headers = input.getHeaders() != null ? input.getHeaders() : new HashMap<>();
             String userAgent = headers.getOrDefault("User-Agent", "unknown");
             String referer = headers.getOrDefault("Referer", "direct");
+            String country = headers.getOrDefault("CloudFront-Viewer-Country", "unknown");
+
+            String deviceType = "PC";
+            String lowerUA = userAgent.toLowerCase();
+            if (lowerUA.contains("mobile") || lowerUA.contains("android") || lowerUA.contains("iphone")) {
+                deviceType = "Mobile";
+            } else if (lowerUA.contains("tablet") || lowerUA.contains("ipad")) {
+                deviceType = "Tablet";
+            }
 
             Map<String, AttributeValue> logItem = new HashMap<>();
             logItem.put("shortId", AttributeValue.builder().s(shortId).build());
@@ -123,16 +135,56 @@ public class RedirectHandler implements RequestHandler<APIGatewayProxyRequestEve
             logItem.put("ip", AttributeValue.builder().s(hashIp(ip)).build());
             logItem.put("userAgent", AttributeValue.builder().s(userAgent).build());
             logItem.put("referer", AttributeValue.builder().s(referer).build());
+            logItem.put("country", AttributeValue.builder().s(country).build());
+            logItem.put("deviceType", AttributeValue.builder().s(deviceType).build());
 
             ddb.putItem(PutItemRequest.builder()
                     .tableName(this.clicksTable)
                     .item(logItem)
                     .build());
             logger.log("[Success] Logged click details for " + shortId);
+
+            updateTrendInsights(shortId, country, deviceType, logger);
             
         } catch (Exception e) {
             logger.log("[Error] updateClickStats failed: " + e.getMessage());
             e.printStackTrace();
+        }
+    }
+
+    private void updateTrendInsights(String shortId, String country, String deviceType, LambdaLogger logger) {
+        try {
+            ddb.updateItem(UpdateItemRequest.builder()
+                    .tableName(this.trendInsightsTable)
+                    .key(Map.of(
+                            "shortId", AttributeValue.builder().s(shortId).build(),
+                            "category", AttributeValue.builder().s("COUNTRY").build()
+                    ))
+                    .updateExpression("ADD statsData.#c :inc SET lastUpdated = :now")
+                    .expressionAttributeNames(Map.of("#c", country))
+                    .expressionAttributeValues(Map.of(
+                            ":inc", AttributeValue.builder().n("1").build(),
+                            ":now", AttributeValue.builder().s(Instant.now().toString()).build()
+                    ))
+                    .build());
+
+            ddb.updateItem(UpdateItemRequest.builder()
+                    .tableName(this.trendInsightsTable)
+                    .key(Map.of(
+                            "shortId", AttributeValue.builder().s(shortId).build(),
+                            "category", AttributeValue.builder().s("DEVICE").build()
+                    ))
+                    .updateExpression("ADD statsData.#d :inc SET lastUpdated = :now")
+                    .expressionAttributeNames(Map.of("#d", deviceType))
+                    .expressionAttributeValues(Map.of(
+                            ":inc", AttributeValue.builder().n("1").build(),
+                            ":now", AttributeValue.builder().s(Instant.now().toString()).build()
+                    ))
+                    .build());
+
+            logger.log("[Success] Updated trendInsights for " + shortId);
+        } catch (Exception e) {
+            logger.log("[Error] updateTrendInsights failed: " + e.getMessage());
         }
     }
 

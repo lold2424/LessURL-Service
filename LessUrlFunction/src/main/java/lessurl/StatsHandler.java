@@ -28,6 +28,8 @@ public class StatsHandler implements RequestHandler<APIGatewayProxyRequestEvent,
     private final Gson gson;
     private final String urlsTableName;
     private final String clicksTableName;
+    private final String trendInsightsTableName;
+    private final String aiAnalyticTableName;
     private final String geminiApiKey;
     private final HttpClient httpClient;
 
@@ -35,6 +37,8 @@ public class StatsHandler implements RequestHandler<APIGatewayProxyRequestEvent,
         this.gson = new GsonBuilder().setPrettyPrinting().create();
         this.urlsTableName = System.getenv("URLS_TABLE");
         this.clicksTableName = System.getenv("CLICKS_TABLE");
+        this.trendInsightsTableName = System.getenv("TREND_INSIGHTS_TABLE");
+        this.aiAnalyticTableName = System.getenv("AI_ANALYTIC_TABLE");
         this.geminiApiKey = System.getenv("GEMINI_API_KEY");
 
         String dynamoDbEndpoint = System.getenv("DYNAMODB_ENDPOINT");
@@ -55,11 +59,13 @@ public class StatsHandler implements RequestHandler<APIGatewayProxyRequestEvent,
                 .build();
     }
 
-    protected StatsHandler(DynamoDbClient ddb, Gson gson, String urlsTableName, String clicksTableName, String geminiApiKey, HttpClient httpClient) {
+    protected StatsHandler(DynamoDbClient ddb, Gson gson, String urlsTableName, String clicksTableName, String trendInsightsTableName, String aiAnalyticTableName, String geminiApiKey, HttpClient httpClient) {
         this.ddb = ddb;
         this.gson = gson;
         this.urlsTableName = urlsTableName;
         this.clicksTableName = clicksTableName;
+        this.trendInsightsTableName = trendInsightsTableName;
+        this.aiAnalyticTableName = aiAnalyticTableName;
         this.geminiApiKey = geminiApiKey;
         this.httpClient = httpClient;
     }
@@ -107,6 +113,8 @@ public class StatsHandler implements RequestHandler<APIGatewayProxyRequestEvent,
             QueryResponse queryResponse = ddb.query(queryRequest);
 
             Map<String, Object> calculatedStats = calculateStats(queryResponse.items());
+            Map<String, Object> trendStats = getTrendInsights(shortId);
+            calculatedStats.putAll(trendStats);
 
             calculatedStats.put("originalUrl", urlItem.get("originalUrl").s());
             if (urlItem.containsKey("title")) {
@@ -135,6 +143,7 @@ public class StatsHandler implements RequestHandler<APIGatewayProxyRequestEvent,
 
             if (needsNewAnalysis && aiInsight != null && !aiInsight.contains("오류") && !aiInsight.contains("설정되지 않았습니다")) {
                 updateCachedInsight(shortId, aiInsight, context);
+                saveAiAnalyticHistory(shortId, aiInsight, context);
             }
             
             calculatedStats.put("aiInsight", aiInsight);
@@ -183,6 +192,45 @@ public class StatsHandler implements RequestHandler<APIGatewayProxyRequestEvent,
         }
     }
 
+    private Map<String, Object> getTrendInsights(String shortId) {
+        Map<String, Object> trendData = new HashMap<>();
+        try {
+            QueryRequest query = QueryRequest.builder()
+                    .tableName(this.trendInsightsTableName)
+                    .keyConditionExpression("shortId = :id")
+                    .expressionAttributeValues(Map.of(":id", AttributeValue.builder().s(shortId).build()))
+                    .build();
+
+            QueryResponse response = ddb.query(query);
+            for (Map<String, AttributeValue> item : response.items()) {
+                String category = item.get("category").s();
+                Map<String, AttributeValue> statsMap = item.get("statsData").m();
+                Map<String, Integer> simpleMap = new HashMap<>();
+                statsMap.forEach((k, v) -> simpleMap.put(k, Integer.parseInt(v.n())));
+                trendData.put(category.toLowerCase() + "Stats", simpleMap);
+            }
+        } catch (Exception e) {}
+        return trendData;
+    }
+
+    private void saveAiAnalyticHistory(String shortId, String insight, Context context) {
+        try {
+            Map<String, AttributeValue> item = new HashMap<>();
+            item.put("shortId", AttributeValue.builder().s(shortId).build());
+            item.put("generatedAt", AttributeValue.builder().s(Instant.now().toString()).build());
+            item.put("insightText", AttributeValue.builder().s(insight).build());
+            item.put("analysisType", AttributeValue.builder().s("DAILY_INSIGHT").build());
+            item.put("modelInfo", AttributeValue.builder().s("gemini-2.5-flash").build());
+
+            ddb.putItem(PutItemRequest.builder()
+                    .tableName(this.aiAnalyticTableName)
+                    .item(item)
+                    .build());
+        } catch (Exception e) {
+            context.getLogger().log("Failed to save AI analytic history: " + e.getMessage());
+        }
+    }
+
     private String getAiInsight(Map<String, Object> stats, Context context) {
         if (this.geminiApiKey == null || this.geminiApiKey.isEmpty()) {
             return "AI 분석이 설정되지 않았습니다.";
@@ -190,17 +238,19 @@ public class StatsHandler implements RequestHandler<APIGatewayProxyRequestEvent,
 
         try {
             String prompt = String.format(
-                "다음 URL 단축 서비스의 클릭 통계 데이터를 분석하여 사용자 행동에 대한 짧은 인사이트를 한 문장(한국어)으로 작성해 주세요.\\n" +
+                "당신은 전문 마케팅 분석가입니다. 다음 URL 통계 데이터를 분석하여 사용자층의 특징과 마케팅 인사이트를 정중한 한국어로 한 문장으로 작성해 주세요.\\n" +
                 "데이터:\\n" +
                 "- 총 클릭: %s\\n" +
-                "- 가장 많이 유입된 시간: %s시\\n" +
+                "- 주요 국가: %s\\n" +
+                "- 주요 기기: %s\\n" +
                 "- 주요 유입 경로: %s\\n" +
-                "- 일별 추이: %s\\n" +
-                "주의: 데이터가 적으면 '충분한 데이터가 쌓이지 않았습니다'라고 답변하세요. 정중하고 친근한 말투를 사용하세요.",
+                "- 가장 많이 유입된 시간: %s시\\n" +
+                "주의: 데이터가 적으면 '충분한 데이터가 쌓이지 않았습니다'라고 답변하세요.",
                 stats.get("clicksByReferer") != null ? stats.get("clicksByReferer").toString() : "없음",
-                stats.get("peakHour"),
+                stats.get("countryStats") != null ? stats.get("countryStats").toString() : "알 수 없음",
+                stats.get("deviceStats") != null ? stats.get("deviceStats").toString() : "알 수 없음",
                 stats.get("topReferer"),
-                stats.get("clicksByDay")
+                stats.get("peakHour")
             );
 
             String requestBody = String.format(

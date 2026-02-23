@@ -35,6 +35,8 @@ Globals:
       Variables:
         URLS_TABLE: !Ref UrlsTable
         CLICKS_TABLE: !Ref ClicksTable
+        TREND_INSIGHTS_TABLE: !Ref TrendInsightsTable
+        AI_ANALYTIC_TABLE: !Ref AiAnalyticTable
         CORS_ALLOWED_ORIGIN: !Ref CorsAllowedOrigin
 
 Resources:
@@ -87,6 +89,38 @@ Resources:
         - AttributeName: shortId
           KeyType: HASH
         - AttributeName: timestamp
+          KeyType: RANGE
+
+  TrendInsightsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: trendInsights
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: shortId
+          AttributeType: S
+        - AttributeName: category
+          AttributeType: S
+      KeySchema:
+        - AttributeName: shortId
+          KeyType: HASH
+        - AttributeName: category
+          KeyType: RANGE
+
+  AiAnalyticTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: AIAnalytic
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: shortId
+          AttributeType: S
+        - AttributeName: generatedAt
+          AttributeType: S
+      KeySchema:
+        - AttributeName: shortId
+          KeyType: HASH
+        - AttributeName: generatedAt
           KeyType: RANGE
 
   # Lambda Functions
@@ -145,6 +179,10 @@ Resources:
               Action:
                 - dynamodb:PutItem
               Resource: !GetAtt ClicksTable.Arn
+            - Effect: Allow
+              Action:
+                - dynamodb:UpdateItem
+              Resource: !GetAtt TrendInsightsTable.Arn
 
   # 3. 통계: URL조회(Get) / 클릭조회(Query)
   StatsFunction:
@@ -173,6 +211,16 @@ Resources:
               Action:
                 - dynamodb:Query
               Resource: !GetAtt ClicksTable.Arn
+            - Effect: Allow
+              Action:
+                - dynamodb:Query
+                - dynamodb:GetItem
+              Resource: !GetAtt TrendInsightsTable.Arn
+            - Effect: Allow
+              Action:
+                - dynamodb:PutItem
+                - dynamodb:Query
+              Resource: !GetAtt AiAnalyticTable.Arn
 
   # 4. 공개 목록: 인덱스 쿼리
   ListPublicFunction:

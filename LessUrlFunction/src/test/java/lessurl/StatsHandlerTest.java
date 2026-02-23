@@ -42,12 +42,12 @@ class StatsHandlerTest {
     @BeforeEach
     void setUp() {
         lenient().when(mockContext.getLogger()).thenReturn(mockLogger);
-        statsHandler = new StatsHandler(mockDdb, gson, "UrlsTable", "ClicksTable", "dummy-api-key", mockHttpClient);
+        statsHandler = new StatsHandler(mockDdb, gson, "UrlsTable", "ClicksTable", "TrendTable", "AnalyticTable", "dummy-api-key", mockHttpClient);
     }
 
     @Test
-    @DisplayName("통계 계산 로직이 정상적으로 동작한다")
-    void testHandleRequest_CalculatesStats() {
+    @DisplayName("통계 조회 시 트렌드 데이터를 읽고 AI 분석 결과를 반환한다")
+    void testHandleRequest_WithTrendsAndAI() {
         // given
         String shortId = "stats123";
         APIGatewayProxyRequestEvent request = new APIGatewayProxyRequestEvent();
@@ -57,41 +57,30 @@ class StatsHandlerTest {
         urlItem.put("shortId", AttributeValue.builder().s(shortId).build());
         urlItem.put("originalUrl", AttributeValue.builder().s("https://target.com").build());
         urlItem.put("clickCount", AttributeValue.builder().n("10").build());
+        urlItem.put("aiInsight", AttributeValue.builder().s("인기 있는 링크입니다!").build());
+        urlItem.put("lastAnalyzed", AttributeValue.builder().s(Instant.now().toString()).build());
 
         when(mockDdb.getItem(any(GetItemRequest.class)))
                 .thenReturn(GetItemResponse.builder().item(urlItem).build());
 
-        List<Map<String, AttributeValue>> items = new ArrayList<>();
-
-        Map<String, AttributeValue> log1 = new HashMap<>();
-        log1.put("timestamp", AttributeValue.builder().s("2026-02-05T10:00:00Z").build());
-        log1.put("referer", AttributeValue.builder().s("https://www.google.com/search").build());
-        items.add(log1);
-
-        Map<String, AttributeValue> log2 = new HashMap<>();
-        log2.put("timestamp", AttributeValue.builder().s("2026-02-05T10:30:00Z").build());
-        log2.put("referer", AttributeValue.builder().s("https://search.daum.net").build());
-        items.add(log2);
+        Map<String, AttributeValue> trendItem = new HashMap<>();
+        trendItem.put("category", AttributeValue.builder().s("COUNTRY").build());
+        Map<String, AttributeValue> statsData = new HashMap<>();
+        statsData.put("KR", AttributeValue.builder().n("5").build());
+        trendItem.put("statsData", AttributeValue.builder().m(statsData).build());
 
         when(mockDdb.query(any(QueryRequest.class)))
-                .thenReturn(QueryResponse.builder().items(items).build());
+                .thenReturn(QueryResponse.builder().items(List.of(trendItem)).build());
 
         // when
         APIGatewayProxyResponseEvent response = statsHandler.handleRequest(request, mockContext);
 
         // then
         assertEquals(200, response.getStatusCode());
-
         Map responseBody = gson.fromJson(response.getBody(), Map.class);
-
-        assertTrue(responseBody.containsKey("clicks"));
-        assertTrue(responseBody.containsKey("stats"));
-
-        assertEquals(10.0, responseBody.get("clicks"));
-
         Map stats = (Map) responseBody.get("stats");
-        assertEquals("https://target.com", stats.get("originalUrl"));
-        assertEquals(10.0, ((Map)stats.get("clicksByHour")).get("10"));
-        assertEquals("2026-02-05", ((Map)stats.get("clicksByDay")).keySet().iterator().next());
+
+        assertTrue(stats.containsKey("countryStats"));
+        assertEquals(5.0, ((Map)stats.get("countryStats")).get("KR"));
     }
 }
