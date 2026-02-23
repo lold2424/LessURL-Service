@@ -27,3 +27,4 @@ api-requests.http
 *.bat
 docker-compose.yml
 docker/
+urls-table-config.json
