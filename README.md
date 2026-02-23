@@ -1,156 +1,82 @@
-# LessURL
+# 🔗 LessURL - 지능형 서버리스 URL 단축 서비스
 
-## 멋쟁이사자 인턴쉽 프로젝트
+**LessURL**은 AWS 서버리스 아키텍처와 최신 AI 기술을 결합하여 탄생한 스마트 URL 관리 플랫폼입니다. 단순한 링크 단축을 넘어, AI 기반의 실시간 유해성 분석과 심도 있는 클릭 통계 리포트를 제공합니다.
 
-LessURL은 AWS 서버리스 서비스(Lambda, API Gateway, DynamoDB)를 활용한 URL 단축 서비스입니다. 긴 URL을 짧은 코드로 변환하고, 클릭 시 원본 URL로 리다이렉트합니다. 클릭 통계(시간대별, 리퍼러별)를 수집하고, AI가 인기 URL 패턴을 분석하여 트렌드를 제공합니다.
+## 🚀 주요 기능 (Key Features)
 
-### 주요 기능
+### 1. 지능형 URL 단축 및 보안
+*   **AI 기반 위협 탐지**: Google Gemini 1.5 Flash와 Google Safe Browsing API를 이중으로 활용하여 피싱, 악성코드 사이트를 실시간으로 차단합니다.
+*   **유연한 가시성**: `PUBLIC`(공개 대시보드 노출) 또는 `PRIVATE`(나만 확인) 설정을 지원합니다.
 
-*   **URL 단축:** 긴 URL을 고유한 짧은 ID와 URL로 변환합니다. (예: `https://example.com/long-url` -> `https://[your-api-domain]/prod/shorten`)
-*   **URL 리디렉션:** 짧은 URL로 접근 시 원본 URL로 자동으로 리디렉션합니다. (예: `https://[your-api-domain]/prod/abc12345` -> `https://example.com/long-url`)
-*   **클릭 통계:** 생성된 짧은 URL의 총 클릭 수 및 상세 클릭 통계(시간별, 일별, 레퍼러별)를 제공합니다.
-*   **서버리스 아키텍처:** AWS Lambda, API Gateway, DynamoDB를 활용하여 확장성, 고가용성, 비용 효율성을 제공합니다.
+### 2. 고도화된 통계 분석 및 AI 인사이트
+*   **정밀 트래킹**: 시간별, 일별 클릭 추이와 유입 경로(Referer)를 데이터 시각화하여 제공합니다.
+*   **AI 리포트**: Gemini 2.5 Flash가 수집된 통계를 분석하여 사용자 행동 패턴에 대한 한 줄 인사이트와 전문가 팁을 생성합니다.
+*   **지능형 캐싱**: AI API 할당량 보호 및 응답 속도 향상을 위해 분석 결과를 **24시간 동안 DB에 캐싱**하는 로직이 적용되어 있습니다.
 
-### 아키텍처 (Architecture)
+### 3. 현대적인 사용자 경험 (UX)
+*   **브랜드 아이덴티티**: Deep Trust Navy(#002855)와 Energizing Orange(#FF6B35)를 활용한 전문적이고 역동적인 UI.
+*   **다국어 지원**: 한국어 및 영어 자동 전환 및 설정 유지 기능을 제공합니다.
+*   **실시간 대시보드**: 최신 공개 링크들을 한눈에 확인하고 즉시 이동 및 통계 조회가 가능합니다.
 
-```mermaid
-graph TD
-    subgraph Frontend
-        F1[Client Browser] -- HTTPS --> CF(CloudFront CDN)
-        CF --> S3(S3 Bucket for Static Hosting)
-    end
+---
 
-    subgraph Backend API
-        F1 -->|API Requests| GW(API Gateway)
-        GW -->|POST /shorten| C1(ShortenFunction Lambda)
-        GW -->|"GET /&#123;shortId&#125;"| C2(RedirectFunction Lambda)
-        GW -->|"GET /stats/&#123;shortId&#125;"| C3(StatsFunction Lambda)
-    end
+## 🛠 기술 스택 (Tech Stack)
 
-    subgraph Database
-        C1 -->|Write/Read| D1(DynamoDB UrlsTable)
-        C2 -->|Read Url & Write Clicks| D1
-        C2 -->|Write Clicks| D2(DynamoDB ClicksTable)
-        C3 -->|Read Urls & Query Clicks| D1
-        C3 -->|Query Clicks| D2
-    end
+### Backend (Serverless)
+- **Runtime**: Java 21 (AWS Lambda)
+- **Optimization**: AWS Lambda **SnapStart** 적용 (Cold Start 최적화)
+- **Framework**: AWS Serverless Application Model (SAM)
+- **Database**: Amazon DynamoDB (On-Demand)
+- **AI/Security**: Google Gemini API (1.5 & 2.5 Flash), Google Safe Browsing API
 
-    subgraph Monitoring
-        CL[CloudWatch Logs]
-        CM[CloudWatch Metrics]
-        GW --> CL
-        GW --> CM
-        C1 --> CL
-        C1 --> CM
-        C2 --> CL
-        C2 --> CM
-        C3 --> CL
-        C3 --> CM
-    end
-```
+### Frontend
+- **Framework**: **Next.js 16** (App Router, Static Export)
+- **Library**: React 19, TypeScript
+- **Styling**: **Tailwind CSS 4** (최신 버전 적용)
+- **Infrastructure**: AWS S3, Amazon CloudFront
 
-AWS Lambda, API Gateway, DynamoDB, S3, CloudFront, CloudWatch를 사용하여 구축될 서버리스 아키텍처입니다.
+### DevOps & Monitoring
+- **CI/CD**: GitHub Actions (자동 빌드 및 배포)
+- **Monitoring**: Amazon CloudWatch Alarms (에러율, 실행 시간, Throttling 감지 및 SNS 이메일 알림)
 
-### API 엔드포인트
+---
 
-LessURL은 다음과 같은 API 엔드포인트를 제공합니다.
+## 🏗 아키텍처 (Architecture)
 
-#### 1. URL 단축 (Shorten URL)
+![Architecture Diagram](./architecture%20diagram.png)
 
-*   **기능:** 긴 URL을 짧은 URL로 변환하고 DynamoDB에 저장합니다.
-*   **엔드포인트:** `POST /shorten`
-*   **요청 (Request Body - application/json):**
-    ```json
-    {
-      "url": "https://www.example.com/very/long/url",
-      "title": "Example Website Title (Optional)"
-    }
-    ```
-*   **응답 (Response Body - application/json - 200 OK):**
-    ```json
-    {
-      "shortId": "abc12345",
-      "shortUrl": "https://[your-api-domain]/prod/abc12345"
-    }
-    ```
-*   **에러 응답:**
-    *   `400 Bad Request`: `url` 필드 누락 또는 빈 값.
-    *   `500 Internal Server Error`: 서버 내부 오류.
+---
 
-#### 2. URL 리디렉션 (Redirect URL)
+## 💻 로컬 개발 환경 설정 (Local Development)
 
-*   **기능:** 짧은 URL로 접근 시 원본 URL로 리디렉션합니다.
-*   **엔드포인트:** `GET /{shortId}`
-*   **요청 (Path Parameter):** `shortId`
-*   **응답 (301 Moved Permanently):**
-    *   `Location` 헤더: 원본 URL
-*   **에러 응답:**
-    *   `400 Bad Request`: `shortId` 파라미터 누락.
-    *   `404 Not Found`: `shortId`에 해당하는 URL을 찾을 수 없음.
-    *   `500 Internal Server Error`: 서버 내부 오류.
+### Prerequisites
+- AWS SAM CLI, Java 21, Docker
+- Google Gemini API Key
 
-#### 3. URL 통계 (Get URL Stats)
-
-*   **기능:** 특정 `shortId`에 대한 상세 클릭 통계를 조회합니다.
-*   **엔드포인트:** `GET /stats/{shortId}`
-*   **요청 (Path Parameter):** `shortId`
-*   **응답 (Response Body - application/json - 200 OK):**
-    ```json
-    {
-      "clicks": 15, // 총 클릭 수
-      "stats": {
-        "originalUrl": "https://www.example.com/very/long/url",
-        "title": "Example Website Title", // title이 있는 경우
-        "clicksByHour": {
-          "9": 5,
-          "10": 10
-        },
-        "clicksByDay": {
-          "2026-02-05": 15
-        },
-        "clicksByReferer": {
-          "direct": 8,
-          "www.google.com": 7
-        },
-        "peakHour": 10, // 가장 클릭이 많았던 시간
-        "topReferer": "www.google.com", // 가장 많은 유입을 보인 레퍼러
-        "period": "7d" // 통계 집계 기간 (현재는 7일)
-      }
-    }
-    ```
-*   **에러 응답:**
-    *   `400 Bad Request`: `shortId` 파라미터 누락.
-    *   `404 Not Found`: `shortId`에 해당하는 URL을 찾을 수 없음.
-    *   `500 Internal Server Error`: 서버 내부 오류.
-
-### 개발 환경 설정 (Local Development Setup)
-
-1.  **AWS SAM CLI 설치:**
-    *   [AWS SAM CLI 설치 가이드](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/serverless-sam-cli-install.html)를 참조하여 SAM CLI를 설치합니다.
-2.  **Java 21 설치:**
-    *   프로젝트는 Java 21을 사용합니다. [OpenJDK](https://openjdk.java.net/install/index.html) 등을 통해 설치합니다.
-3.  **Gradle 설치:**
-    *   프로젝트는 Gradle Wrapper를 포함하고 있으므로 별도 설치 없이 `gradlew` 스크립트를 사용할 수 있습니다.
-4.  **의존성 설치:**
-    *   프로젝트 루트(`LessUrlFunction` 디렉토리)에서 `./gradlew build` 명령을 실행하여 필요한 의존성을 다운로드하고 프로젝트를 빌드합니다.
-
-### 배포 (Deployment)
-
-1.  **SAM 빌드:**
+### Setup
+1.  **데이터베이스 실행**: `docker-compose up -d`
+2.  **테이블 초기화**: `setup-local-db.bat` 실행
+3.  **백엔드 실행**:
     ```bash
     sam build
+    sam local start-api --env-vars local-env.json --port 3001
     ```
-2.  **SAM 배포:**
+4.  **프론트엔드 실행**:
     ```bash
-    sam deploy --guided
+    cd frontend
+    npm install
+    npm run dev
     ```
-    *   `--guided` 옵션을 사용하면 스택 이름, AWS 리전 등 배포에 필요한 정보를 대화형으로 설정할 수 있습니다.
 
-### 테스트 (Testing)
+---
 
-*   **단위 테스트:**
-    *   IntelliJ IDEA에서 JUnit 5 기반의 테스트 코드를 실행할 수 있습니다.
-    *   프로젝트 루트(`LessUrlFunction` 디렉토리)에서 `./gradlew test` 명령을 실행할 수도 있습니다.
-*   **API 테스트:**
-    *   IntelliJ IDEA Ultimate의 내장 HTTP Client 또는 Postman과 같은 도구를 사용하여 배포된 API 엔드포인트를 테스트할 수 있습니다.
-    *   `LessUrlFunction/api-requests.http` 파일을 참조하여 각 API 엔드포인트의 요청 및 응답 예시를 확인할 수 있습니다.
+## 📡 모니터링 알람 (Monitoring)
+본 프로젝트는 안정적인 운영을 위해 다음과 같은 CloudWatch 알람이 설정되어 있습니다.
+- **Lambda Errors**: 분당 10회 이상 발생 시 알림
+- **Lambda Duration**: 평균 실행 시간 3초 초과 시 알림
+- **API Gateway 5XX/4XX**: 이상 징후 발생 시 실시간 감지
+- **DynamoDB Throttling**: 읽기/쓰기 용량 초과 시 즉시 대응 가능
+
+---
+
+&copy; 2026 LessURL Service. Powered by AWS Serverless.
