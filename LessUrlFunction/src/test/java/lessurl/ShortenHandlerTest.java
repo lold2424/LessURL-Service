@@ -217,12 +217,12 @@ class ShortenHandlerTest {
     }
 
     @Test
-    @DisplayName("URL과 Title을 요청하면 DB에 저장하고 shortId, shortUrl만 반환한다")
-    void testHandleRequest_WithTitle() {
+    @DisplayName("URL과 CustomAlias를 요청하면 DB에 저장하고 해당 alias가 포함된 shortUrl을 반환한다")
+    void testHandleRequest_WithCustomAlias() {
         // given
         String inputUrl = "google.com";
-        String inputTitle = "구글 메인";
-        String requestBody = String.format("{\"url\": \"%s\", \"title\": \"%s\"}", inputUrl, inputTitle);
+        String inputAlias = "my-google";
+        String requestBody = String.format("{\"url\": \"%s\", \"customAlias\": \"%s\"}", inputUrl, inputAlias);
         APIGatewayProxyRequestEvent request = createApiRequest(requestBody);
 
         // when
@@ -242,9 +242,9 @@ class ShortenHandlerTest {
         String savedShortId = capturedRequest.item().get("shortId").s();
         String returnedShortUrl = responseBody.get("shortUrl");
 
-        assertEquals(inputTitle, capturedRequest.item().get("title").s());
+        assertEquals(inputAlias, capturedRequest.item().get("customAlias").s());
         assertEquals("https://" + inputUrl, capturedRequest.item().get("originalUrl").s());
-        assertTrue(returnedShortUrl.endsWith(savedShortId));
+        assertTrue(returnedShortUrl.endsWith(inputAlias));
         assertTrue(returnedShortUrl.startsWith("https://test-api.com/prod/"));
     }
 

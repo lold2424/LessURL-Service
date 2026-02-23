@@ -1,0 +1,30 @@
+{
+    "TableName": "urls",
+    "KeySchema": [
+        { "AttributeName": "shortId", "KeyType": "HASH" }
+    ],
+    "AttributeDefinitions": [
+        { "AttributeName": "shortId", "AttributeType": "S" },
+        { "AttributeName": "customAlias", "AttributeType": "S" },
+        { "AttributeName": "visibility", "AttributeType": "S" },
+        { "AttributeName": "createdAt", "AttributeType": "S" }
+    ],
+    "GlobalSecondaryIndexes": [
+        {
+            "IndexName": "VisibilityIndex",
+            "KeySchema": [
+                { "AttributeName": "visibility", "KeyType": "HASH" },
+                { "AttributeName": "createdAt", "KeyType": "RANGE" }
+            ],
+            "Projection": { "ProjectionType": "ALL" }
+        },
+        {
+            "IndexName": "CustomAliasIndex",
+            "KeySchema": [
+                { "AttributeName": "customAlias", "KeyType": "HASH" }
+            ],
+            "Projection": { "ProjectionType": "ALL" }
+        }
+    ],
+    "BillingMode": "PAY_PER_REQUEST"
+}

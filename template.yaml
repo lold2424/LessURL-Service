@@ -25,7 +25,7 @@ Parameters:
 
 Globals:
   Function:
-    Timeout: 20
+    Timeout: 60
     MemorySize: 1024
     Runtime: java21
     Architectures:
@@ -38,6 +38,7 @@ Globals:
         TREND_INSIGHTS_TABLE: !Ref TrendInsightsTable
         AI_ANALYTIC_TABLE: !Ref AiAnalyticTable
         CORS_ALLOWED_ORIGIN: !Ref CorsAllowedOrigin
+        DYNAMODB_ENDPOINT: ""
 
 Resources:
   # API Gateway
@@ -58,10 +59,13 @@ Resources:
       AttributeDefinitions:
         - AttributeName: shortId
           AttributeType: S
+        - AttributeName: customAlias
+          AttributeType: S
         - AttributeName: visibility
           AttributeType: S
         - AttributeName: createdAt
           AttributeType: S
+
       KeySchema:
         - AttributeName: shortId
           KeyType: HASH
@@ -72,6 +76,12 @@ Resources:
               KeyType: HASH
             - AttributeName: createdAt
               KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        - IndexName: CustomAliasIndex
+          KeySchema:
+            - AttributeName: customAlias
+              KeyType: HASH
           Projection:
             ProjectionType: ALL
 

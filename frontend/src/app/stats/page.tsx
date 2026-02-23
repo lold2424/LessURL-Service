@@ -8,6 +8,7 @@ interface StatsData {
   clicks: number;
   stats: {
     originalUrl: string;
+    customAlias?: string;
     title?: string;
     clicksByHour: Record<string, number>;
     clicksByDay: Record<string, number>;
@@ -164,7 +165,7 @@ function StatsContent() {
           {/* Main Stats Card */}
           <div className="md:col-span-2 space-y-8">
             <section className="bg-white p-8 rounded-3xl shadow-xl shadow-slate-200/50 border border-slate-50">
-              <h1 className="text-3xl font-black text-brand-navy mb-1">{data.stats.title || "Untitled Link"}</h1>
+              <h1 className="text-3xl font-black text-brand-navy mb-1">{data.stats.title || data.stats.customAlias || shortId}</h1>
               <a href={data.stats.originalUrl} target="_blank" rel="noreferrer" className="text-brand-orange hover:text-brand-amber hover:underline break-all text-sm mb-6 block font-medium">
                 {data.stats.originalUrl}
               </a>

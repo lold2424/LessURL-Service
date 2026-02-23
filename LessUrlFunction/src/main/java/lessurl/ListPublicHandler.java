@@ -34,9 +34,12 @@ public class ListPublicHandler implements RequestHandler<APIGatewayProxyRequestE
                 .httpClient(UrlConnectionHttpClient.create());
 
         if (dynamoDbEndpoint != null && !dynamoDbEndpoint.isEmpty()) {
+            System.out.println("DEBUG (List): Connecting to Local DynamoDB at " + dynamoDbEndpoint);
             clientBuilder
                     .endpointOverride(URI.create(dynamoDbEndpoint))
                     .region(Region.of(System.getenv("AWS_REGION")));
+        } else {
+            System.out.println("DEBUG (List): Connecting to Production AWS DynamoDB");
         }
         this.ddb = clientBuilder.build();
     }
@@ -54,8 +57,8 @@ public class ListPublicHandler implements RequestHandler<APIGatewayProxyRequestE
                     .indexName("VisibilityIndex")
                     .keyConditionExpression("visibility = :v")
                     .expressionAttributeValues(Map.of(":v", AttributeValue.builder().s("PUBLIC").build()))
-                    .scanIndexForward(false) // 최신순 정렬
-                    .limit(10) // 최근 10개만 조회
+                    .scanIndexForward(false)
+                    .limit(10)
                     .build();
 
             QueryResponse queryResponse = ddb.query(queryRequest);
@@ -67,6 +70,9 @@ public class ListPublicHandler implements RequestHandler<APIGatewayProxyRequestE
                 urlData.put("originalUrl", item.get("originalUrl").s());
                 urlData.put("createdAt", item.get("createdAt").s());
                 urlData.put("clickCount", item.get("clickCount").n());
+                if (item.containsKey("customAlias")) {
+                    urlData.put("customAlias", item.get("customAlias").s());
+                }
                 if (item.containsKey("title")) {
                     urlData.put("title", item.get("title").s());
                 }

@@ -94,7 +94,20 @@ public class StatsHandler implements RequestHandler<APIGatewayProxyRequestEvent,
             Map<String, AttributeValue> urlItem = ddb.getItem(getRequest).item();
 
             if (urlItem == null || urlItem.isEmpty()) {
-                return createErrorResponse(404, "URL not found", headers);
+                ScanRequest aliasScan = ScanRequest.builder()
+                        .tableName(this.urlsTableName)
+                        .filterExpression("customAlias = :alias")
+                        .expressionAttributeValues(Map.of(":alias", AttributeValue.builder().s(shortId).build()))
+                        .limit(1)
+                        .build();
+                
+                ScanResponse aliasResponse = ddb.scan(aliasScan);
+                if (aliasResponse.hasItems() && !aliasResponse.items().isEmpty()) {
+                    urlItem = aliasResponse.items().get(0);
+                    shortId = urlItem.get("shortId").s();
+                } else {
+                    return createErrorResponse(404, "URL not found", headers);
+                }
             }
 
             String sevenDaysAgo = Instant.now().minus(7, ChronoUnit.DAYS).toString();
@@ -117,6 +130,9 @@ public class StatsHandler implements RequestHandler<APIGatewayProxyRequestEvent,
             calculatedStats.putAll(trendStats);
 
             calculatedStats.put("originalUrl", urlItem.get("originalUrl").s());
+            if (urlItem.containsKey("customAlias")) {
+                calculatedStats.put("customAlias", urlItem.get("customAlias").s());
+            }
             if (urlItem.containsKey("title")) {
                 calculatedStats.put("title", urlItem.get("title").s());
             }

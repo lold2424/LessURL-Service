@@ -42,9 +42,12 @@ public class RedirectHandler implements RequestHandler<APIGatewayProxyRequestEve
                 .httpClient(UrlConnectionHttpClient.create());
 
         if (dynamoDbEndpoint != null && !dynamoDbEndpoint.isEmpty()) {
+            System.out.println("DEBUG (Redirect): Connecting to Local DynamoDB at " + dynamoDbEndpoint);
             clientBuilder
                     .endpointOverride(URI.create(dynamoDbEndpoint))
                     .region(Region.of(awsRegion));
+        } else {
+            System.out.println("DEBUG (Redirect): Connecting to Production AWS DynamoDB");
         }
         this.ddb = clientBuilder.build();
     }
@@ -58,11 +61,13 @@ public class RedirectHandler implements RequestHandler<APIGatewayProxyRequestEve
 
     @Override
     public APIGatewayProxyResponseEvent handleRequest(APIGatewayProxyRequestEvent input, Context context) {
-        String shortId = input.getPathParameters().get("shortId");
+        String inputId = input.getPathParameters().get("shortId");
 
-        if (shortId == null || shortId.isEmpty()) {
+        if (inputId == null || inputId.isEmpty()) {
             return createErrorResponse(400, "Short ID is required");
         }
+
+        String shortId = inputId.trim();
 
         try {
             GetItemResponse getResponse = ddb.getItem(GetItemRequest.builder()
@@ -70,11 +75,28 @@ public class RedirectHandler implements RequestHandler<APIGatewayProxyRequestEve
                     .key(Map.of("shortId", AttributeValue.builder().s(shortId).build()))
                     .build());
 
-            if (!getResponse.hasItem()) {
-                return createErrorResponse(404, "URL not found");
+            Map<String, AttributeValue> item;
+
+            if (getResponse.hasItem()) {
+                item = getResponse.item();
+            } else {
+                software.amazon.awssdk.services.dynamodb.model.ScanRequest scanRequest = software.amazon.awssdk.services.dynamodb.model.ScanRequest.builder()
+                        .tableName(this.urlsTable)
+                        .filterExpression("customAlias = :alias")
+                        .expressionAttributeValues(Map.of(":alias", AttributeValue.builder().s(shortId).build()))
+                        .limit(1)
+                        .build();
+                
+                software.amazon.awssdk.services.dynamodb.model.ScanResponse scanResponse = ddb.scan(scanRequest);
+                if (scanResponse.hasItems() && !scanResponse.items().isEmpty()) {
+                    item = scanResponse.items().get(0);
+                    shortId = item.get("shortId").s();
+                } else {
+                    return createErrorResponse(404, "URL not found");
+                }
             }
 
-            String originalUrl = getResponse.item().get("originalUrl").s();
+            String originalUrl = item.get("originalUrl").s();
 
             try {
                 updateClickStats(shortId, input, context.getLogger());
