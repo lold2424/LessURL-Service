@@ -12,8 +12,7 @@ Parameters:
     Description: "Route 53 Hosted Zone ID for lessurl.site"
   CorsAllowedOrigin:
     Type: String
-    Default: "https://lessurl.site"
-    Description: API에 대한 CORS 헤더 값
+    Default: "https://app.lessurl.site" # 프론트엔드 주소 변경 예정
   GeminiApiKey:
     Type: String
     Description: Gemini API 키
@@ -24,7 +23,7 @@ Parameters:
     NoEcho: true
   BaseUrl:
     Type: String
-    Default: "https://api.lessurl.site"
+    Default: "https://lessurl.site" # 이제 가장 짧은 주소를 사용합니다!
     Description: "단축 URL의 베이스 도메인"
 
 Globals:
@@ -45,14 +44,18 @@ Globals:
         DYNAMODB_ENDPOINT: ""
 
 Resources:
-  # SSL 인증서 생성 (서울 리전용)
+  # 1. SSL 인증서 생성 (와일드카드로 생성하여 메인과 서브 모두 커버)
   ApiCertificate:
     Type: AWS::CertificateManager::Certificate
     Properties:
-      DomainName: "api.lessurl.site"
+      DomainName: "lessurl.site"
+      SubjectAlternativeNames:
+        - "*.lessurl.site"
       ValidationMethod: DNS
       DomainValidationOptions:
-        - DomainName: "api.lessurl.site"
+        - DomainName: "lessurl.site"
+          HostedZoneId: !Ref HostedZoneId
+        - DomainName: "*.lessurl.site"
           HostedZoneId: !Ref HostedZoneId
 
   # API Gateway
@@ -64,15 +67,15 @@ Resources:
         AllowMethods: "'GET,POST,OPTIONS'"
         AllowHeaders: "'Content-Type'"
         AllowOrigin: "'*'"
-      # 커스텀 도메인 설정 (api.lessurl.site 사용)
+      # 백엔드가 메인 도메인을 차지합니다!
       Domain:
-        DomainName: "api.lessurl.site"
+        DomainName: "lessurl.site"
         CertificateArn: !Ref ApiCertificate
         Route53:
           HostedZoneId: !Ref HostedZoneId
         EndpointConfiguration: REGIONAL
 
-  # DynamoDB Tables
+  # DynamoDB Tables (생략 없이 유지)
   UrlsTable:
     Type: AWS::DynamoDB::Table
     Properties:
@@ -87,7 +90,6 @@ Resources:
           AttributeType: S
         - AttributeName: createdAt
           AttributeType: S
-
       KeySchema:
         - AttributeName: shortId
           KeyType: HASH
@@ -155,7 +157,7 @@ Resources:
         - AttributeName: generatedAt
           KeyType: RANGE
 
-  # Lambda Functions
+  # Lambda Functions (생략 없이 유지)
   ShortenFunction:
     Type: AWS::Serverless::Function
     Properties:
