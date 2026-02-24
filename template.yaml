@@ -12,7 +12,7 @@ Parameters:
     Description: "Route 53 Hosted Zone ID for lessurl.site"
   CorsAllowedOrigin:
     Type: String
-    Default: "https://app.lessurl.site" # 프론트엔드 주소 변경 예정
+    Default: "https://app.lessurl.site"
   GeminiApiKey:
     Type: String
     Description: Gemini API 키
@@ -23,7 +23,7 @@ Parameters:
     NoEcho: true
   BaseUrl:
     Type: String
-    Default: "https://lessurl.site" # 이제 가장 짧은 주소를 사용합니다!
+    Default: "https://lessurl.site"
     Description: "단축 URL의 베이스 도메인"
 
 Globals:
@@ -44,16 +44,14 @@ Globals:
         DYNAMODB_ENDPOINT: ""
 
 Resources:
-  # 1. SSL 인증서 생성 (와일드카드로 생성하여 메인과 서브 모두 커버)
+  # 1. SSL 인증서 생성
   ApiCertificate:
     Type: AWS::CertificateManager::Certificate
     Properties:
       DomainName: "lessurl.site"
-      SubjectAlternativeNames:
-        - "*.lessurl.site"
       ValidationMethod: DNS
       DomainValidationOptions:
-        - DomainName: "lessurl.site" # 루트 도메인 하나만 지정하면 와일드카드까지 자동으로 처리됩니다.
+        - DomainName: "lessurl.site"
           HostedZoneId: !Ref HostedZoneId
 
   # API Gateway
@@ -65,7 +63,7 @@ Resources:
         AllowMethods: "'GET,POST,OPTIONS'"
         AllowHeaders: "'Content-Type'"
         AllowOrigin: "'*'"
-      # 백엔드가 메인 도메인을 차지합니다!
+      # 백엔드가 메인 도메인을 차지합니다
       Domain:
         DomainName: "lessurl.site"
         CertificateArn: !Ref ApiCertificate
@@ -73,7 +71,7 @@ Resources:
           HostedZoneId: !Ref HostedZoneId
         EndpointConfiguration: REGIONAL
 
-  # DynamoDB Tables (생략 없이 유지)
+  # DynamoDB Tables (기존 설정 유지)
   UrlsTable:
     Type: AWS::DynamoDB::Table
     Properties:
@@ -155,7 +153,7 @@ Resources:
         - AttributeName: generatedAt
           KeyType: RANGE
 
-  # Lambda Functions (생략 없이 유지)
+  # Lambda Functions
   ShortenFunction:
     Type: AWS::Serverless::Function
     Properties:
