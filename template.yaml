@@ -187,7 +187,9 @@ Resources:
               Action:
                 - dynamodb:GetItem
                 - dynamodb:Query
-              Resource: !GetAtt UrlsTable.Arn
+              Resource: 
+                - !GetAtt UrlsTable.Arn
+                - !Sub "${UrlsTable.Arn}/index/CustomAliasIndex"
             - Effect: Allow
               Action:
                 - lambda:InvokeFunction
