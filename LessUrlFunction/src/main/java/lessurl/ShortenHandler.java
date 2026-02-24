@@ -2,15 +2,12 @@ package lessurl;
 
 import com.amazonaws.services.lambda.runtime.Context;
 import com.amazonaws.services.lambda.runtime.LambdaLogger;
-import com.amazonaws.services.lambda.runtime.RequestHandler;
 import com.amazonaws.services.lambda.runtime.events.APIGatewayProxyRequestEvent;
 import com.amazonaws.services.lambda.runtime.events.APIGatewayProxyResponseEvent;
 import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
-import software.amazon.awssdk.http.urlconnection.UrlConnectionHttpClient;
-import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
 import software.amazon.awssdk.services.dynamodb.model.*;
+import software.amazon.awssdk.services.lambda.LambdaClient;
 
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -23,44 +20,24 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-public class ShortenHandler implements RequestHandler<APIGatewayProxyRequestEvent, APIGatewayProxyResponseEvent> {
+public class ShortenHandler extends BaseHandler<APIGatewayProxyRequestEvent, APIGatewayProxyResponseEvent> {
 
-    private final DynamoDbClient ddb;
-    private final Gson gson;
-    private final String tableName;
     private final String geminiApiKey;
     private final String safeBrowsingApiKey;
     private final HttpClient httpClient;
 
     public ShortenHandler() {
-        this.gson = new GsonBuilder().setPrettyPrinting().create();
-        this.tableName = System.getenv("URLS_TABLE");
+        super();
         this.geminiApiKey = System.getenv("GEMINI_API_KEY");
         this.safeBrowsingApiKey = System.getenv("SAFE_BROWSING_API_KEY");
-
-        String dynamoDbEndpoint = System.getenv("DYNAMODB_ENDPOINT");
-        var clientBuilder = DynamoDbClient.builder()
-                .httpClient(UrlConnectionHttpClient.create());
-
-        if (dynamoDbEndpoint != null && !dynamoDbEndpoint.isEmpty()) {
-            System.out.println("DEBUG: Connecting to Local DynamoDB at " + dynamoDbEndpoint);
-            clientBuilder
-                    .endpointOverride(URI.create(dynamoDbEndpoint))
-                    .region(Region.of(System.getenv("AWS_REGION")));
-        } else {
-            System.out.println("DEBUG: Connecting to Production AWS DynamoDB");
-        }
-        this.ddb = clientBuilder.build();
         this.httpClient = HttpClient.newBuilder()
                 .version(HttpClient.Version.HTTP_1_1)
                 .connectTimeout(Duration.ofSeconds(15))
                 .build();
     }
 
-    protected ShortenHandler(DynamoDbClient ddb, Gson gson, String tableName, String geminiApiKey, String safeBrowsingApiKey, HttpClient httpClient) {
-        this.ddb = ddb;
-        this.gson = gson;
-        this.tableName = tableName;
+    protected ShortenHandler(DynamoDbClient ddb, LambdaClient lambda, Gson gson, String urlsTable, String geminiApiKey, String safeBrowsingApiKey, HttpClient httpClient) {
+        super(ddb, lambda, gson, urlsTable, "*");
         this.geminiApiKey = geminiApiKey;
         this.safeBrowsingApiKey = safeBrowsingApiKey;
         this.httpClient = httpClient;
@@ -69,35 +46,31 @@ public class ShortenHandler implements RequestHandler<APIGatewayProxyRequestEven
     @Override
     public APIGatewayProxyResponseEvent handleRequest(APIGatewayProxyRequestEvent input, Context context) {
         LambdaLogger logger = context.getLogger();
-        APIGatewayProxyResponseEvent response = new APIGatewayProxyResponseEvent();
-        Map<String, String> headers = new HashMap<>();
-        headers.put("Content-Type", "application/json");
-        headers.put("Access-Control-Allow-Origin", System.getenv("CORS_ALLOWED_ORIGIN"));
         
         try {
             String body = input.getBody();
-            if (body == null || body.isEmpty()) return createErrorResponse(400, "Body is empty", headers);
+            if (body == null || body.isEmpty()) return createErrorResponse(400, "Body is empty");
 
             Map<String, String> requestData = gson.fromJson(body, Map.class);
             String originalUrl = requestData.get("url");
             String customAlias = requestData.get("customAlias");
             String visibility = requestData.getOrDefault("visibility", "PRIVATE").toUpperCase();
 
-            if (originalUrl == null || originalUrl.isEmpty()) return createErrorResponse(400, "URL is required", headers);
+            if (originalUrl == null || originalUrl.isEmpty()) return createErrorResponse(400, "URL is required");
             if (!originalUrl.startsWith("http")) originalUrl = "https://" + originalUrl;
 
             if (isUrlMaliciousWithGemini(originalUrl, logger) || isUrlMaliciousWithSafeBrowsing(originalUrl, logger)) {
-                return createErrorResponse(400, "유해 URL이 감지되었습니다.", headers);
+                return createErrorResponse(400, "유해 URL이 감지되었습니다.");
             }
 
             String aiTitle = generateTitleWithAi(originalUrl, logger);
 
             if (customAlias != null && !customAlias.trim().isEmpty()) {
                 String alias = customAlias.trim();
-                if (!alias.matches("^[a-zA-Z0-9_-]{3,20}$")) return createErrorResponse(400, "Invalid alias format", headers);
+                if (!alias.matches("^[a-zA-Z0-9_-]{3,20}$")) return createErrorResponse(400, "Invalid alias format");
 
                 if (isAliasTaken(alias, logger)) {
-                    return createErrorResponse(400, "이미 사용 중인 이름입니다.", headers);
+                    return createErrorResponse(400, "이미 사용 중인 이름입니다.");
                 }
             }
 
@@ -124,7 +97,7 @@ public class ShortenHandler implements RequestHandler<APIGatewayProxyRequestEven
 
                 try {
                     ddb.putItem(PutItemRequest.builder()
-                            .tableName(this.tableName)
+                            .tableName(this.urlsTable)
                             .item(item)
                             .conditionExpression("attribute_not_exists(shortId)")
                             .build());
@@ -146,33 +119,31 @@ public class ShortenHandler implements RequestHandler<APIGatewayProxyRequestEven
             responseBody.put("shortUrl", shortUrl);
             responseBody.put("title", aiTitle);
 
-            response.setStatusCode(200);
-            response.setHeaders(headers);
-            response.setBody(gson.toJson(responseBody));
+            return createResponse(200, responseBody);
 
         } catch (Exception e) {
             logger.log("[Error] " + e.getMessage());
-            return createErrorResponse(500, "Server Error: " + e.getMessage(), headers);
+            return createErrorResponse(500, "Server Error: " + e.getMessage());
         }
-        return response;
     }
 
     private boolean isAliasTaken(String value, LambdaLogger logger) {
         try {
             GetItemResponse res = ddb.getItem(GetItemRequest.builder()
-                    .tableName(this.tableName)
+                    .tableName(this.urlsTable)
                     .key(Map.of("shortId", AttributeValue.builder().s(value).build()))
                     .build());
             if (res.hasItem()) return true;
 
-            ScanResponse scanRes = ddb.scan(ScanRequest.builder()
-                    .tableName(this.tableName)
-                    .filterExpression("#a = :v")
-                    .expressionAttributeNames(Map.of("#a", "customAlias"))
+            QueryResponse queryRes = ddb.query(QueryRequest.builder()
+                    .tableName(this.urlsTable)
+                    .indexName("CustomAliasIndex")
+                    .keyConditionExpression("customAlias = :v")
                     .expressionAttributeValues(Map.of(":v", AttributeValue.builder().s(value).build()))
+                    .limit(1)
                     .build());
             
-            return scanRes.count() > 0;
+            return queryRes.count() > 0;
         } catch (Exception e) {
             logger.log("isAliasTaken error: " + e.getMessage());
             return false;
@@ -229,13 +200,5 @@ public class ShortenHandler implements RequestHandler<APIGatewayProxyRequestEven
             String inner = (String) ((Map<String, Object>) ((List<Object>) cont.get("parts")).get(0)).get("text");
             return !inner.contains("SAFE");
         } catch (Exception e) { return false; }
-    }
-
-    private APIGatewayProxyResponseEvent createErrorResponse(int code, String msg, Map<String, String> h) {
-        APIGatewayProxyResponseEvent r = new APIGatewayProxyResponseEvent();
-        r.setStatusCode(code);
-        r.setHeaders(h);
-        r.setBody(gson.toJson(Map.of("error", msg)));
-        return r;
     }
 }

@@ -80,7 +80,7 @@ class ShortenHandlerTest {
         lenient().when(mockHttpClient.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
                 .thenReturn(mockHttpResponse);
 
-        shortenHandler = new ShortenHandler(mockDdb, gson, "TestTable", testApiKey, testSafeBrowsingApiKey, mockHttpClient);
+        shortenHandler = new ShortenHandler(mockDdb, mock(software.amazon.awssdk.services.lambda.LambdaClient.class), gson, "TestTable", testApiKey, testSafeBrowsingApiKey, mockHttpClient);
     }
 
 

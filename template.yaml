@@ -162,7 +162,7 @@ Resources:
                 - dynamodb:PutItem
               Resource: !GetAtt UrlsTable.Arn
 
-  # 2. 리다이렉트: URL조회(Get), 수정(Update) / 클릭기록(Put)
+  # 2. 리다이렉트: URL조회(Get) 후 AnalyticsFunction 비동기 호출
   RedirectFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -170,6 +170,9 @@ Resources:
       Handler: lessurl.RedirectHandler::handleRequest
       SnapStart:
         ApplyOn: PublishedVersions
+      Environment:
+        Variables:
+          ANALYTICS_FUNCTION_NAME: !Ref AnalyticsFunction
       Events:
         ApiEvent:
           Type: Api
@@ -183,6 +186,26 @@ Resources:
             - Effect: Allow
               Action:
                 - dynamodb:GetItem
+                - dynamodb:Query
+              Resource: !GetAtt UrlsTable.Arn
+            - Effect: Allow
+              Action:
+                - lambda:InvokeFunction
+              Resource: !GetAtt AnalyticsFunction.Arn
+
+  # 5. 통계 처리 전용 (비동기 호출됨)
+  AnalyticsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: LessUrlFunction
+      Handler: lessurl.AnalyticsHandler::handleRequest
+      SnapStart:
+        ApplyOn: PublishedVersions
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
                 - dynamodb:UpdateItem
               Resource: !GetAtt UrlsTable.Arn
             - Effect: Allow

@@ -42,7 +42,7 @@ class StatsHandlerTest {
     @BeforeEach
     void setUp() {
         lenient().when(mockContext.getLogger()).thenReturn(mockLogger);
-        statsHandler = new StatsHandler(mockDdb, gson, "UrlsTable", "ClicksTable", "TrendTable", "AnalyticTable", "dummy-api-key", mockHttpClient);
+        statsHandler = new StatsHandler(mockDdb, mock(software.amazon.awssdk.services.lambda.LambdaClient.class), gson, "UrlsTable", "ClicksTable", "TrendTable");
     }
 
     @Test

@@ -14,13 +14,18 @@ import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
 import software.amazon.awssdk.services.dynamodb.model.AttributeValue;
 import software.amazon.awssdk.services.dynamodb.model.GetItemRequest;
 import software.amazon.awssdk.services.dynamodb.model.GetItemResponse;
+import software.amazon.awssdk.services.lambda.LambdaClient;
+import software.amazon.awssdk.services.lambda.model.InvokeRequest;
+import software.amazon.awssdk.services.lambda.model.InvokeResponse;
 
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.atLeastOnce;
 
 @ExtendWith(MockitoExtension.class)
 class RedirectHandlerTest {
@@ -31,6 +36,9 @@ class RedirectHandlerTest {
     private DynamoDbClient mockDdb;
 
     @Mock
+    private LambdaClient mockLambda;
+
+    @Mock
     private Context mockContext;
     
     @Mock
@@ -38,14 +46,14 @@ class RedirectHandlerTest {
 
     @BeforeEach
     void setUp() {
-        redirectHandler = new RedirectHandler(mockDdb, "mock-urls-table", "mock-clicks-table", "mock-trend-table");
+        redirectHandler = new RedirectHandler(mockDdb, mockLambda, "mock-urls-table", "mock-analytics-function");
 
         lenient().when(mockContext.getLogger()).thenReturn(mockLogger);
     }
 
     @Test
-    @DisplayName("유효한 shortId로 요청 시 국가 및 기기 정보를 포함하여 로그를 남기고 트렌드를 업데이트한다")
-    void testHandleRequest_Success_WithAnalytics() {
+    @DisplayName("유효한 shortId로 요청 시 AnalyticsFunction을 비동기로 호출하고 301 리다이렉트한다")
+    void testHandleRequest_Success_WithAsyncAnalytics() {
         // given
         String testShortId = "abc1234";
         String originalUrl = "https://www.example.com";
@@ -64,15 +72,16 @@ class RedirectHandlerTest {
                 .build();
 
         lenient().when(mockDdb.getItem(any(GetItemRequest.class))).thenReturn(getItemResponse);
+        lenient().when(mockLambda.invoke(any(InvokeRequest.class))).thenReturn(InvokeResponse.builder().build());
 
         // when
         APIGatewayProxyResponseEvent response = redirectHandler.handleRequest(request, mockContext);
 
         // then
         assertEquals(301, response.getStatusCode());
-        
-        // 여기에 ddb.putItem(clicks)과 ddb.updateItem(trend)이 호출되었는지 검증하는 로직이 필요하나
-        // 현재 Mockito 설정상 호출 여부만 확인하거나 ArgumentCaptor를 사용할 수 있음
+        assertEquals(originalUrl, response.getHeaders().get("Location"));
+
+        verify(mockLambda, atLeastOnce()).invoke(any(InvokeRequest.class));
     }
 
     @Test

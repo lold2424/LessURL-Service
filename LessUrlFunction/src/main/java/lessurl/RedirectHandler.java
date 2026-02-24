@@ -2,66 +2,41 @@ package lessurl;
 
 import com.amazonaws.services.lambda.runtime.Context;
 import com.amazonaws.services.lambda.runtime.LambdaLogger;
-import com.amazonaws.services.lambda.runtime.RequestHandler;
 import com.amazonaws.services.lambda.runtime.events.APIGatewayProxyRequestEvent;
 import com.amazonaws.services.lambda.runtime.events.APIGatewayProxyResponseEvent;
-import java.net.URI;
-import software.amazon.awssdk.http.urlconnection.UrlConnectionHttpClient;
-import software.amazon.awssdk.regions.Region;
+import com.google.gson.Gson;
+import software.amazon.awssdk.core.SdkBytes;
 import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
 import software.amazon.awssdk.services.dynamodb.model.AttributeValue;
 import software.amazon.awssdk.services.dynamodb.model.GetItemRequest;
 import software.amazon.awssdk.services.dynamodb.model.GetItemResponse;
-import software.amazon.awssdk.services.dynamodb.model.PutItemRequest;
-import software.amazon.awssdk.services.dynamodb.model.UpdateItemRequest;
-
+import software.amazon.awssdk.services.lambda.LambdaClient;
+import software.amazon.awssdk.services.lambda.model.InvocationType;
+import software.amazon.awssdk.services.lambda.model.InvokeRequest;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
 
-public class RedirectHandler implements RequestHandler<APIGatewayProxyRequestEvent, APIGatewayProxyResponseEvent> {
+public class RedirectHandler extends BaseHandler<APIGatewayProxyRequestEvent, APIGatewayProxyResponseEvent> {
 
-    private final DynamoDbClient ddb;
-    private final String urlsTable;
-    private final String clicksTable;
-    private final String trendInsightsTable;
+    private final String analyticsFunctionName;
 
     public RedirectHandler() {
-        this.urlsTable = System.getenv("URLS_TABLE");
-        this.clicksTable = System.getenv("CLICKS_TABLE");
-        this.trendInsightsTable = System.getenv("TREND_INSIGHTS_TABLE");
-
-        String dynamoDbEndpoint = System.getenv("DYNAMODB_ENDPOINT");
-        String awsRegion = System.getenv("AWS_REGION");
-
-        var clientBuilder = DynamoDbClient.builder()
-                .httpClient(UrlConnectionHttpClient.create());
-
-        if (dynamoDbEndpoint != null && !dynamoDbEndpoint.isEmpty()) {
-            System.out.println("DEBUG (Redirect): Connecting to Local DynamoDB at " + dynamoDbEndpoint);
-            clientBuilder
-                    .endpointOverride(URI.create(dynamoDbEndpoint))
-                    .region(Region.of(awsRegion));
-        } else {
-            System.out.println("DEBUG (Redirect): Connecting to Production AWS DynamoDB");
-        }
-        this.ddb = clientBuilder.build();
+        super();
+        this.analyticsFunctionName = System.getenv("ANALYTICS_FUNCTION_NAME");
     }
 
-    protected RedirectHandler(DynamoDbClient ddb, String urlsTable, String clicksTable, String trendInsightsTable) {
-        this.ddb = ddb;
-        this.urlsTable = urlsTable;
-        this.clicksTable = clicksTable;
-        this.trendInsightsTable = trendInsightsTable;
+    protected RedirectHandler(DynamoDbClient ddb, LambdaClient lambda, String urlsTable, String analyticsFunctionName) {
+        super(ddb, lambda, new Gson(), urlsTable, "*");
+        this.analyticsFunctionName = analyticsFunctionName;
     }
 
     @Override
     public APIGatewayProxyResponseEvent handleRequest(APIGatewayProxyRequestEvent input, Context context) {
-        String inputId = input.getPathParameters().get("shortId");
+        String inputId = input.getPathParameters() != null ? input.getPathParameters().get("shortId") : null;
 
         if (inputId == null || inputId.isEmpty()) {
             return createErrorResponse(400, "Short ID is required");
@@ -80,16 +55,16 @@ public class RedirectHandler implements RequestHandler<APIGatewayProxyRequestEve
             if (getResponse.hasItem()) {
                 item = getResponse.item();
             } else {
-                software.amazon.awssdk.services.dynamodb.model.ScanRequest scanRequest = software.amazon.awssdk.services.dynamodb.model.ScanRequest.builder()
+                software.amazon.awssdk.services.dynamodb.model.QueryResponse queryResponse = ddb.query(software.amazon.awssdk.services.dynamodb.model.QueryRequest.builder()
                         .tableName(this.urlsTable)
-                        .filterExpression("customAlias = :alias")
+                        .indexName("CustomAliasIndex")
+                        .keyConditionExpression("customAlias = :alias")
                         .expressionAttributeValues(Map.of(":alias", AttributeValue.builder().s(shortId).build()))
                         .limit(1)
-                        .build();
+                        .build());
                 
-                software.amazon.awssdk.services.dynamodb.model.ScanResponse scanResponse = ddb.scan(scanRequest);
-                if (scanResponse.hasItems() && !scanResponse.items().isEmpty()) {
-                    item = scanResponse.items().get(0);
+                if (queryResponse.hasItems() && !queryResponse.items().isEmpty()) {
+                    item = queryResponse.items().get(0);
                     shortId = item.get("shortId").s();
                 } else {
                     return createErrorResponse(404, "URL not found");
@@ -99,17 +74,14 @@ public class RedirectHandler implements RequestHandler<APIGatewayProxyRequestEve
             String originalUrl = item.get("originalUrl").s();
 
             try {
-                updateClickStats(shortId, input, context.getLogger());
+                triggerAnalyticsAsync(shortId, input, context.getLogger());
             } catch (Exception e) {
-                context.getLogger().log("[Error] Failed to update stats: " + e.getMessage());
+                context.getLogger().log("[Warning] Failed to trigger analytics: " + e.getMessage());
             }
 
-            APIGatewayProxyResponseEvent response = new APIGatewayProxyResponseEvent();
-            response.setStatusCode(301);
-            Map<String, String> headers = new HashMap<>();
-            headers.put("Location", originalUrl);
-            headers.put("Cache-Control", "no-cache, no-store, must-revalidate");
-            response.setHeaders(headers);
+            APIGatewayProxyResponseEvent response = createResponse(301, "");
+            response.getHeaders().put("Location", originalUrl);
+            response.getHeaders().put("Cache-Control", "no-cache, no-store, must-revalidate");
 
             return response;
 
@@ -119,95 +91,43 @@ public class RedirectHandler implements RequestHandler<APIGatewayProxyRequestEve
         }
     }
     
-    private void updateClickStats(String shortId, APIGatewayProxyRequestEvent input, LambdaLogger logger) {
-        try {
-            Map<String, AttributeValue> key = Map.of("shortId", AttributeValue.builder().s(shortId).build());
+    private void triggerAnalyticsAsync(String shortId, APIGatewayProxyRequestEvent input, LambdaLogger logger) {
+        if (this.analyticsFunctionName == null) return;
 
-            ddb.updateItem(UpdateItemRequest.builder()
-                    .tableName(this.urlsTable)
-                    .key(key)
-                    .updateExpression("ADD clickCount :inc")
-                    .expressionAttributeValues(Map.of(
-                            ":inc", AttributeValue.builder().n("1").build()
-                    ))
-                    .build());
-            logger.log("[Success] Incremented clickCount for " + shortId);
-
-            String ip = "unknown";
-            if (input.getRequestContext() != null && input.getRequestContext().getIdentity() != null) {
-                ip = input.getRequestContext().getIdentity().getSourceIp();
-            }
-
-            Map<String, String> headers = input.getHeaders() != null ? input.getHeaders() : new HashMap<>();
-            String userAgent = headers.getOrDefault("User-Agent", "unknown");
-            String referer = headers.getOrDefault("Referer", "direct");
-            String country = headers.getOrDefault("CloudFront-Viewer-Country", "unknown");
-
-            String deviceType = "PC";
-            String lowerUA = userAgent.toLowerCase();
-            if (lowerUA.contains("mobile") || lowerUA.contains("android") || lowerUA.contains("iphone")) {
-                deviceType = "Mobile";
-            } else if (lowerUA.contains("tablet") || lowerUA.contains("ipad")) {
-                deviceType = "Tablet";
-            }
-
-            Map<String, AttributeValue> logItem = new HashMap<>();
-            logItem.put("shortId", AttributeValue.builder().s(shortId).build());
-            logItem.put("timestamp", AttributeValue.builder().s(Instant.now().toString()).build());
-            logItem.put("ip", AttributeValue.builder().s(hashIp(ip)).build());
-            logItem.put("userAgent", AttributeValue.builder().s(userAgent).build());
-            logItem.put("referer", AttributeValue.builder().s(referer).build());
-            logItem.put("country", AttributeValue.builder().s(country).build());
-            logItem.put("deviceType", AttributeValue.builder().s(deviceType).build());
-
-            ddb.putItem(PutItemRequest.builder()
-                    .tableName(this.clicksTable)
-                    .item(logItem)
-                    .build());
-            logger.log("[Success] Logged click details for " + shortId);
-
-            updateTrendInsights(shortId, country, deviceType, logger);
-            
-        } catch (Exception e) {
-            logger.log("[Error] updateClickStats failed: " + e.getMessage());
-            e.printStackTrace();
+        String ip = "unknown";
+        if (input.getRequestContext() != null && input.getRequestContext().getIdentity() != null) {
+            ip = input.getRequestContext().getIdentity().getSourceIp();
         }
-    }
 
-    private void updateTrendInsights(String shortId, String country, String deviceType, LambdaLogger logger) {
-        try {
-            ddb.updateItem(UpdateItemRequest.builder()
-                    .tableName(this.trendInsightsTable)
-                    .key(Map.of(
-                            "shortId", AttributeValue.builder().s(shortId).build(),
-                            "category", AttributeValue.builder().s("COUNTRY").build()
-                    ))
-                    .updateExpression("ADD statsData.#c :inc SET lastUpdated = :now")
-                    .expressionAttributeNames(Map.of("#c", country))
-                    .expressionAttributeValues(Map.of(
-                            ":inc", AttributeValue.builder().n("1").build(),
-                            ":now", AttributeValue.builder().s(Instant.now().toString()).build()
-                    ))
-                    .build());
+        Map<String, String> headers = input.getHeaders() != null ? input.getHeaders() : new HashMap<>();
+        String userAgent = headers.getOrDefault("User-Agent", "unknown");
+        String referer = headers.getOrDefault("Referer", "direct");
+        String country = headers.getOrDefault("CloudFront-Viewer-Country", "unknown");
 
-            ddb.updateItem(UpdateItemRequest.builder()
-                    .tableName(this.trendInsightsTable)
-                    .key(Map.of(
-                            "shortId", AttributeValue.builder().s(shortId).build(),
-                            "category", AttributeValue.builder().s("DEVICE").build()
-                    ))
-                    .updateExpression("ADD statsData.#d :inc SET lastUpdated = :now")
-                    .expressionAttributeNames(Map.of("#d", deviceType))
-                    .expressionAttributeValues(Map.of(
-                            ":inc", AttributeValue.builder().n("1").build(),
-                            ":now", AttributeValue.builder().s(Instant.now().toString()).build()
-                    ))
-                    .build());
-
-            logger.log("[Success] Updated trendInsights for " + shortId);
-        } catch (Exception e) {
-            logger.log("[Error] updateTrendInsights failed: " + e.getMessage());
+        String deviceType = "PC";
+        String lowerUA = userAgent.toLowerCase();
+        if (lowerUA.contains("mobile") || lowerUA.contains("android") || lowerUA.contains("iphone")) {
+            deviceType = "Mobile";
+        } else if (lowerUA.contains("tablet") || lowerUA.contains("ipad")) {
+            deviceType = "Tablet";
         }
+
+        Map<String, String> payload = new HashMap<>();
+        payload.put("shortId", shortId);
+        payload.put("ip", hashIp(ip));
+        payload.put("userAgent", userAgent);
+        payload.put("referer", referer);
+        payload.put("country", country);
+        payload.put("deviceType", deviceType);
+
+        InvokeRequest invokeRequest = InvokeRequest.builder()
+                .functionName(this.analyticsFunctionName)
+                .invocationType(InvocationType.EVENT)
+                .payload(SdkBytes.fromUtf8String(gson.toJson(payload)))
+                .build();
+
+        lambda.invoke(invokeRequest);
+        logger.log("[Success] Triggered AnalyticsFunction for " + shortId);
     }
 
     private String hashIp(String ip) {
@@ -229,12 +149,5 @@ public class RedirectHandler implements RequestHandler<APIGatewayProxyRequestEve
             hexString.append(hex);
         }
         return hexString.toString();
-    }
-
-    private APIGatewayProxyResponseEvent createErrorResponse(int statusCode, String message) {
-        APIGatewayProxyResponseEvent response = new APIGatewayProxyResponseEvent();
-        response.setStatusCode(statusCode);
-        response.setBody("{\"error\": \"" + message + "\"}");
-        return response;
     }
 }
