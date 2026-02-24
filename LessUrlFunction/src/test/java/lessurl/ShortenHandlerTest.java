@@ -118,6 +118,7 @@ class ShortenHandlerTest {
         assertEquals(2, responseBody.size());
         assertTrue(responseBody.containsKey("shortId"));
         assertTrue(responseBody.containsKey("shortUrl"));
+        assertEquals(7, ((String)responseBody.get("shortId")).length());
 
         verify(mockDdb).putItem(putItemRequestCaptor.capture());
         String savedShortId = putItemRequestCaptor.getValue().item().get("shortId").s();
@@ -196,7 +197,7 @@ class ShortenHandlerTest {
 
         // then
         assertEquals(400, response.getStatusCode());
-        assertTrue(response.getBody().contains("요청 본문이 비어 있습니다."));
+        assertTrue(response.getBody().contains("Body is empty"));
     }
 
     @Test
@@ -213,7 +214,7 @@ class ShortenHandlerTest {
 
         // then
         assertEquals(500, response.getStatusCode());
-        assertTrue(response.getBody().contains("내부 서버 오류"));
+        assertTrue(response.getBody().contains("Server Error"));
     }
 
     @Test

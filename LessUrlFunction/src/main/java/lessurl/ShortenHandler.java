@@ -76,11 +76,11 @@ public class ShortenHandler extends BaseHandler<APIGatewayProxyRequestEvent, API
 
             String baseUrl = System.getenv("BASE_URL");
             String shortId = null;
-            int maxRetries = 5;
+            int maxRetries = 10; // 충돌 시 재시도 횟수 상향
             boolean saved = false;
 
             for (int i = 0; i < maxRetries; i++) {
-                shortId = UUID.randomUUID().toString().substring(0, 8);
+                shortId = IdGenerator.generateId(7); // Base62 기반 7글자 ID 생성
                 if (isAliasTaken(shortId, logger)) continue;
 
                 Map<String, AttributeValue> item = new HashMap<>();
