@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - deploy
-
   pull_request:
     branches:
       - deploy
@@ -14,15 +13,47 @@ permissions:
   contents: read
 
 jobs:
-  build-and-deploy:
+  # 1. 프론트엔드 빌드 및 배포 Job (병렬 실행)
+  frontend-deploy:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: './frontend/package-lock.json'
+
+      - name: Install & Build Frontend
+        working-directory: ./frontend
+        run: |
+          npm ci
+          npm run build
+        env:
+          NEXT_PUBLIC_API_BASE_URL: ${{ secrets.NEXT_PUBLIC_API_BASE_URL }}
+
+      - name: Deploy Frontend to S3 & CloudFront
+        if: github.event_name == 'push' && github.ref == 'refs/heads/deploy'
+        run: |
+          aws s3 sync frontend/out/ s3://${{ secrets.FRONTEND_S3_BUCKET }} --delete
+          aws cloudfront create-invalidation --distribution-id ${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }} --paths "/*"
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: ap-northeast-2
+
+  # 2. 백엔드 빌드 및 배포 Job (병렬 실행)
+  backend-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
 
       - name: Set up Java 21
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '21'
@@ -43,41 +74,8 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ap-northeast-2
 
-      # --- Frontend Deployment Steps ---
-      - name: Set up Node.js
-        uses: actions/setup-node@v3
-        with:
-          node-version: '20'
-
-      - name: Install frontend dependencies
-        run: npm ci
-        working-directory: ./frontend
-
-      - name: Debug package.json
-        run: cat package.json && npm run
-        working-directory: ./frontend
-
-      - name: Build Next.js app
-        run: npm run build
-        working-directory: ./frontend
-        env:
-          NEXT_PUBLIC_API_BASE_URL: ${{ secrets.NEXT_PUBLIC_API_BASE_URL }}
-
-      - name: Deploy frontend to S3
-        run: aws s3 sync frontend/out/ s3://${{ secrets.FRONTEND_S3_BUCKET }} --delete
-        if: github.event_name == 'push' && github.ref == 'refs/heads/deploy'
-
-      - name: Invalidate CloudFront cache
-        run: aws cloudfront create-invalidation --distribution-id ${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }} --paths "/*"
-        if: github.event_name == 'push' && github.ref == 'refs/heads/deploy'
-      # --- End Frontend Deployment Steps ---
-
       - name: Grant execute permission to gradlew
         run: chmod +x gradlew
-        working-directory: ./LessUrlFunction
-
-      - name: Clean Gradle Project
-        run: ./gradlew clean
         working-directory: ./LessUrlFunction
 
       - name: SAM Build
@@ -100,4 +98,8 @@ jobs:
             --no-confirm-changeset \
             --no-fail-on-empty-changeset \
             --region ap-northeast-2 \
-            --parameter-overrides CorsAllowedOrigin=${{ secrets.CORS_PROD_ORIGIN }} GeminiApiKey=${{ secrets.GEMINI_API_KEY }} SafeBrowsingApiKey=${{ secrets.SAFE_BROWSING_API_KEY }} BaseUrl=${{ secrets.PROD_BASE_URL }}
+            --parameter-overrides \
+              CorsAllowedOrigin=${{ secrets.CORS_PROD_ORIGIN }} \
+              GeminiApiKey=${{ secrets.GEMINI_API_KEY }} \
+              SafeBrowsingApiKey=${{ secrets.SAFE_BROWSING_API_KEY }} \
+              BaseUrl=${{ secrets.PROD_BASE_URL }}
