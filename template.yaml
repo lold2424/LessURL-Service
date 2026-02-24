@@ -53,9 +53,7 @@ Resources:
         - "*.lessurl.site"
       ValidationMethod: DNS
       DomainValidationOptions:
-        - DomainName: "lessurl.site"
-          HostedZoneId: !Ref HostedZoneId
-        - DomainName: "*.lessurl.site"
+        - DomainName: "lessurl.site" # 루트 도메인 하나만 지정하면 와일드카드까지 자동으로 처리됩니다.
           HostedZoneId: !Ref HostedZoneId
 
   # API Gateway
