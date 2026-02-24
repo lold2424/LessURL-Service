@@ -6,6 +6,10 @@ Description: >
   Java 21 & SnapStart based URL Shortener Service
 
 Parameters:
+  HostedZoneId:
+    Type: String
+    Default: "Z079670437KXXERC398XZ"
+    Description: "Route 53 Hosted Zone ID for lessurl.site"
   CorsAllowedOrigin:
     Type: String
     Default: "http://localhost:3000"
@@ -20,7 +24,7 @@ Parameters:
     NoEcho: true
   BaseUrl:
     Type: String
-    Default: ""
+    Default: "https://lessurl.site"
     Description: "단축 URL의 베이스 도메인"
 
 Globals:
@@ -41,6 +45,16 @@ Globals:
         DYNAMODB_ENDPOINT: ""
 
 Resources:
+  # SSL 인증서 생성
+  ApiCertificate:
+    Type: AWS::CertificateManager::Certificate
+    Properties:
+      DomainName: "lessurl.site"
+      ValidationMethod: DNS
+      DomainValidationOptions:
+        - DomainName: "lessurl.site"
+          HostedZoneId: !Ref HostedZoneId
+
   # API Gateway
   UrlShortenerApi:
     Type: AWS::Serverless::Api
@@ -50,6 +64,52 @@ Resources:
         AllowMethods: "'GET,POST,OPTIONS'"
         AllowHeaders: "'Content-Type'"
         AllowOrigin: "'*'"
+      # API Gateway 자체 도메인 설정은 유지하되 CloudFront의 Origin으로 사용합니다.
+      Domain:
+        DomainName: "api.lessurl.site" # 백엔드용 서브도메인으로 변경 (CloudFront가 lessurl.site를 가집니다)
+        CertificateArn: !Ref ApiCertificate
+        Route53:
+          HostedZoneId: !Ref HostedZoneId
+        EndpointConfiguration: REGIONAL
+
+  # HTTP -> HTTPS 리다이렉션을 위한 CloudFront 설정
+  CloudFrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        Aliases:
+          - "lessurl.site"
+        DefaultCacheBehavior:
+          TargetOriginId: "ApiGatewayOrigin"
+          ViewerProtocolPolicy: "redirect-to-https" # 이 설정이 HTTP -> HTTPS 전환을 담당합니다.
+          AllowedMethods: ["GET", "HEAD", "OPTIONS", "PUT", "PATCH", "POST", "DELETE"]
+          CachedMethods: ["GET", "HEAD"]
+          ForwardedValues:
+            QueryString: true
+            Headers: ["*"]
+            Cookies:
+              Forward: all
+        Origins:
+          - Id: "ApiGatewayOrigin"
+            DomainName: !Sub "api.lessurl.site"
+            CustomOriginConfig:
+              OriginProtocolPolicy: "https-only"
+        ViewerCertificate:
+          AcmCertificateArn: !Ref ApiCertificate
+          SslSupportMethod: "sni-only"
+          MinimumProtocolVersion: "TLSv1.2_2021"
+
+  # Route 53 A 레코드가 CloudFront를 가리키도록 설정
+  DnsRecord:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      Name: "lessurl.site"
+      Type: A
+      AliasTarget:
+        DNSName: !GetAtt CloudFrontDistribution.DomainName
+        HostedZoneId: "Z2FDTNDATAQYW2" # CloudFront의 고정 HostedZoneId입니다.
   # DynamoDB Tables
   UrlsTable:
     Type: AWS::DynamoDB::Table
