@@ -12,7 +12,7 @@ Parameters:
     Description: "Route 53 Hosted Zone ID for lessurl.site"
   CorsAllowedOrigin:
     Type: String
-    Default: "http://localhost:3000"
+    Default: "https://lessurl.site"
     Description: API에 대한 CORS 헤더 값
   GeminiApiKey:
     Type: String
@@ -24,7 +24,7 @@ Parameters:
     NoEcho: true
   BaseUrl:
     Type: String
-    Default: "https://lessurl.site"
+    Default: "https://api.lessurl.site"
     Description: "단축 URL의 베이스 도메인"
 
 Globals:
@@ -45,14 +45,14 @@ Globals:
         DYNAMODB_ENDPOINT: ""
 
 Resources:
-  # SSL 인증서 생성
+  # SSL 인증서 생성 (서울 리전용)
   ApiCertificate:
     Type: AWS::CertificateManager::Certificate
     Properties:
-      DomainName: "lessurl.site"
+      DomainName: "api.lessurl.site"
       ValidationMethod: DNS
       DomainValidationOptions:
-        - DomainName: "lessurl.site"
+        - DomainName: "api.lessurl.site"
           HostedZoneId: !Ref HostedZoneId
 
   # API Gateway
@@ -64,52 +64,14 @@ Resources:
         AllowMethods: "'GET,POST,OPTIONS'"
         AllowHeaders: "'Content-Type'"
         AllowOrigin: "'*'"
-      # API Gateway 자체 도메인 설정은 유지하되 CloudFront의 Origin으로 사용합니다.
+      # 커스텀 도메인 설정 (api.lessurl.site 사용)
       Domain:
-        DomainName: "api.lessurl.site" # 백엔드용 서브도메인으로 변경 (CloudFront가 lessurl.site를 가집니다)
+        DomainName: "api.lessurl.site"
         CertificateArn: !Ref ApiCertificate
         Route53:
           HostedZoneId: !Ref HostedZoneId
         EndpointConfiguration: REGIONAL
 
-  # HTTP -> HTTPS 리다이렉션을 위한 CloudFront 설정
-  CloudFrontDistribution:
-    Type: AWS::CloudFront::Distribution
-    Properties:
-      DistributionConfig:
-        Enabled: true
-        Aliases:
-          - "lessurl.site"
-        DefaultCacheBehavior:
-          TargetOriginId: "ApiGatewayOrigin"
-          ViewerProtocolPolicy: "redirect-to-https" # 이 설정이 HTTP -> HTTPS 전환을 담당합니다.
-          AllowedMethods: ["GET", "HEAD", "OPTIONS", "PUT", "PATCH", "POST", "DELETE"]
-          CachedMethods: ["GET", "HEAD"]
-          ForwardedValues:
-            QueryString: true
-            Headers: ["*"]
-            Cookies:
-              Forward: all
-        Origins:
-          - Id: "ApiGatewayOrigin"
-            DomainName: !Sub "api.lessurl.site"
-            CustomOriginConfig:
-              OriginProtocolPolicy: "https-only"
-        ViewerCertificate:
-          AcmCertificateArn: !Ref ApiCertificate
-          SslSupportMethod: "sni-only"
-          MinimumProtocolVersion: "TLSv1.2_2021"
-
-  # Route 53 A 레코드가 CloudFront를 가리키도록 설정
-  DnsRecord:
-    Type: AWS::Route53::RecordSet
-    Properties:
-      HostedZoneId: !Ref HostedZoneId
-      Name: "lessurl.site"
-      Type: A
-      AliasTarget:
-        DNSName: !GetAtt CloudFrontDistribution.DomainName
-        HostedZoneId: "Z2FDTNDATAQYW2" # CloudFront의 고정 HostedZoneId입니다.
   # DynamoDB Tables
   UrlsTable:
     Type: AWS::DynamoDB::Table
@@ -194,7 +156,6 @@ Resources:
           KeyType: RANGE
 
   # Lambda Functions
-  # 1. 단축 생성: 쓰기(PutItem)만 가능
   ShortenFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -222,7 +183,6 @@ Resources:
                 - dynamodb:PutItem
               Resource: !GetAtt UrlsTable.Arn
 
-  # 2. 리다이렉트: URL조회(Get) 후 AnalyticsFunction 비동기 호출
   RedirectFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -255,7 +215,6 @@ Resources:
                 - lambda:InvokeFunction
               Resource: !GetAtt AnalyticsFunction.Arn
 
-  # 5. 통계 처리 전용 (비동기 호출됨)
   AnalyticsFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -279,7 +238,6 @@ Resources:
                 - dynamodb:UpdateItem
               Resource: !GetAtt TrendInsightsTable.Arn
 
-  # 3. 통계: URL조회(Get) / 클릭조회(Query)
   StatsFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -317,7 +275,6 @@ Resources:
                 - dynamodb:Query
               Resource: !GetAtt AiAnalyticTable.Arn
 
-  # 4. 공개 목록: 인덱스 쿼리
   ListPublicFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -342,7 +299,6 @@ Resources:
                 - !GetAtt UrlsTable.Arn
                 - !Sub "${UrlsTable.Arn}/index/VisibilityIndex"
 
-  # Cloud Watch 알람 설정
   MonitoringTopic:
     Type: AWS::SNS::Topic
     Properties:
@@ -351,7 +307,6 @@ Resources:
         - Protocol: email
           Endpoint: "lold2424@gmail.com"
 
-  # Lambda Errors: 에러 > 10/분 일 때 알람 발송 (Shorten)
   ShortenErrorAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
@@ -370,7 +325,6 @@ Resources:
       AlarmActions:
         - !Ref MonitoringTopic
 
-  # Lambda Duration: 실행시간 > 3초 (3000ms) 일 때 알람 발송 (Shorten)
   ShortenDurationAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
@@ -389,7 +343,6 @@ Resources:
       AlarmActions:
         - !Ref MonitoringTopic
 
-  # RedirectFunction 알람
   RedirectErrorAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
@@ -426,7 +379,6 @@ Resources:
       AlarmActions:
         - !Ref MonitoringTopic
 
-  # StatsFunction 알람
   StatsErrorAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
@@ -463,7 +415,6 @@ Resources:
       AlarmActions:
         - !Ref MonitoringTopic
 
-  # API Gateway 5XX: 서버 에러 > 5/분 일 때 알람 발송
   ApiGateway5xxAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
@@ -482,7 +433,6 @@ Resources:
       AlarmActions:
         - !Ref MonitoringTopic
 
-  # API Gateway 4XX: 클라이언트 에러 > 50/분 일 때 알람 발송
   ApiGateway4xxAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
@@ -501,7 +451,6 @@ Resources:
       AlarmActions:
         - !Ref MonitoringTopic
 
-  # DynamoDB: 읽기 스로틀링 발생 시 알람 발송
   DynamoDbThrottleAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
