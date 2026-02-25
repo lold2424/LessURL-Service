@@ -102,4 +102,5 @@ jobs:
               CorsAllowedOrigin=${{ secrets.CORS_PROD_ORIGIN }} \
               GeminiApiKey=${{ secrets.GEMINI_API_KEY }} \
               SafeBrowsingApiKey=${{ secrets.SAFE_BROWSING_API_KEY }} \
-              BaseUrl=${{ secrets.PROD_BASE_URL }}
+              BaseUrl=${{ secrets.PROD_BASE_URL }} \
+              AdminToken=${{ secrets.NEXT_PUBLIC_ADMIN_TOKEN }}

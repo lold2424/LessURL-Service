@@ -49,23 +49,42 @@ public class StatsHandler extends BaseHandler<APIGatewayProxyRequestEvent, APIGa
                     .build());
 
             if (!urlRes.hasItem()) {
+                context.getLogger().log("[Error] URL not found in DynamoDB: " + shortId);
                 return createErrorResponse(404, "URL not found");
             }
 
             Map<String, AttributeValue> urlItem = urlRes.item();
 
-            Map<String, Object> stats = new HashMap<>();
-            stats.put("originalUrl", urlItem.get("originalUrl").s());
-            stats.put("clickCount", Integer.parseInt(urlItem.get("clickCount").n()));
-            
-            // 트렌드 데이터 로드 로직 (생략 가능하나 기존 기능 유지)
-            // ... (기존 StatsHandler 로직 반영)
+            int clickCount = 0;
+            if (urlItem.containsKey("clickCount") && urlItem.get("clickCount").n() != null) {
+                clickCount = Integer.parseInt(urlItem.get("clickCount").n());
+            }
 
-            return createResponse(200, stats);
+            Map<String, Object> responseData = new HashMap<>();
+            responseData.put("clicks", clickCount);
+            
+            Map<String, Object> statsDetails = new HashMap<>();
+            statsDetails.put("originalUrl", urlItem.get("originalUrl").s());
+            statsDetails.put("title", urlItem.containsKey("title") ? urlItem.get("title").s() : "Untitled");
+            statsDetails.put("clicksByHour", new HashMap<>());
+            statsDetails.put("clicksByDay", new HashMap<>());
+            statsDetails.put("clicksByReferer", new HashMap<>());
+            statsDetails.put("aiInsight", "통계 데이터 수집 및 분석 중입니다.");
+            statsDetails.put("peakHour", 0);
+            statsDetails.put("period", "7d");
+            
+            responseData.put("stats", statsDetails);
+
+            Map<String, Object> monitorData = new HashMap<>();
+            monitorData.put("shortId", shortId);
+            recordMetric("STATS_VIEW", monitorData);
+
+            return createResponse(200, responseData);
 
         } catch (Exception e) {
-            context.getLogger().log("[Error] " + e.getMessage());
-            return createErrorResponse(500, "Server Error");
+            context.getLogger().log("[Critical Error] StatsHandler failed: " + e.getMessage());
+            e.printStackTrace();
+            return createErrorResponse(500, "Server Error: " + e.getMessage());
         }
     }
 }

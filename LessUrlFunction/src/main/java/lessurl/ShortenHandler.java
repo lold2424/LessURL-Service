@@ -18,7 +18,6 @@ import java.time.Instant;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 
 public class ShortenHandler extends BaseHandler<APIGatewayProxyRequestEvent, APIGatewayProxyResponseEvent> {
 
@@ -46,6 +45,7 @@ public class ShortenHandler extends BaseHandler<APIGatewayProxyRequestEvent, API
     @Override
     public APIGatewayProxyResponseEvent handleRequest(APIGatewayProxyRequestEvent input, Context context) {
         LambdaLogger logger = context.getLogger();
+        long startTime = System.currentTimeMillis();
         
         try {
             String body = input.getBody();
@@ -59,7 +59,15 @@ public class ShortenHandler extends BaseHandler<APIGatewayProxyRequestEvent, API
             if (originalUrl == null || originalUrl.isEmpty()) return createErrorResponse(400, "URL is required");
             if (!originalUrl.startsWith("http")) originalUrl = "https://" + originalUrl;
 
-            if (isUrlMaliciousWithGemini(originalUrl, logger) || isUrlMaliciousWithSafeBrowsing(originalUrl, logger)) {
+            boolean isAiMalicious = isUrlMaliciousWithGemini(originalUrl, logger);
+            boolean isSafeBrowsingMalicious = isUrlMaliciousWithSafeBrowsing(originalUrl, logger);
+
+            if (isAiMalicious || isSafeBrowsingMalicious) {
+                Map<String, Object> monitorData = new HashMap<>();
+                monitorData.put("url", originalUrl);
+                monitorData.put("reason", isAiMalicious ? (isSafeBrowsingMalicious ? "BOTH" : "AI") : "SAFE_BROWSING");
+                recordMetric("MALICIOUS_URL", monitorData);
+                
                 return createErrorResponse(400, "유해 URL이 감지되었습니다.");
             }
 
@@ -68,10 +76,7 @@ public class ShortenHandler extends BaseHandler<APIGatewayProxyRequestEvent, API
             if (customAlias != null && !customAlias.trim().isEmpty()) {
                 String alias = customAlias.trim();
                 if (!alias.matches("^[a-zA-Z0-9_-]{3,20}$")) return createErrorResponse(400, "Invalid alias format");
-
-                if (isAliasTaken(alias, logger)) {
-                    return createErrorResponse(400, "이미 사용 중인 이름입니다.");
-                }
+                if (isAliasTaken(alias, logger)) return createErrorResponse(400, "이미 사용 중인 이름입니다.");
             }
 
             String baseUrl = System.getenv("BASE_URL");
@@ -101,18 +106,25 @@ public class ShortenHandler extends BaseHandler<APIGatewayProxyRequestEvent, API
                             .item(item)
                             .conditionExpression("attribute_not_exists(shortId)")
                             .build());
-                    logger.log("[Success] Data saved to DynamoDB for: " + shortId);
                     saved = true;
                     break;
                 } catch (ConditionalCheckFailedException e) {
-                    if (i == maxRetries - 1) throw new RuntimeException("ID creation failed due to collisions");
+                    if (i == maxRetries - 1) throw new RuntimeException("ID collision failed");
                 }
             }
 
-            if (!saved) throw new RuntimeException("Failed to save URL after retries");
+            if (!saved) throw new RuntimeException("Failed to save URL");
 
             String finalPath = (customAlias != null && !customAlias.trim().isEmpty()) ? customAlias.trim() : shortId;
             String shortUrl = formatShortUrl(baseUrl, finalPath, input);
+
+            // 5. 성공 시 성능 지표 기록
+            long duration = System.currentTimeMillis() - startTime;
+            Map<String, Object> perfData = new HashMap<>();
+            perfData.put("path", "/shorten");
+            perfData.put("duration", duration);
+            perfData.put("url", originalUrl);
+            recordMetric("PERFORMANCE", perfData);
 
             Map<String, String> responseBody = new HashMap<>();
             responseBody.put("shortId", shortId);
@@ -123,6 +135,10 @@ public class ShortenHandler extends BaseHandler<APIGatewayProxyRequestEvent, API
 
         } catch (Exception e) {
             logger.log("[Error] " + e.getMessage());
+            Map<String, Object> errorData = new HashMap<>();
+            errorData.put("path", "/shorten");
+            errorData.put("message", e.getMessage());
+            recordMetric("ERROR_5XX", errorData);
             return createErrorResponse(500, "Server Error: " + e.getMessage());
         }
     }
@@ -142,43 +158,24 @@ public class ShortenHandler extends BaseHandler<APIGatewayProxyRequestEvent, API
                     .expressionAttributeValues(Map.of(":v", AttributeValue.builder().s(value).build()))
                     .limit(1)
                     .build());
-            
             return queryRes.count() > 0;
-        } catch (Exception e) {
-            logger.log("isAliasTaken error: " + e.getMessage());
-            return false;
-        }
+        } catch (Exception e) { return false; }
     }
 
     private String generateTitleWithAi(String url, LambdaLogger logger) {
-        if (this.geminiApiKey == null || this.geminiApiKey.isEmpty()) {
-            logger.log("[Warning] Gemini API Key is missing");
-            return "Untitled Link";
-        }
-
+        if (this.geminiApiKey == null || this.geminiApiKey.isEmpty()) return "Untitled Link";
         try {
             String prompt = String.format("해당 웹사이트의 공식 명칭이나 제목을 한국어로 아주 짧게 응답해줘. 설명 없이 이름만 응답해. URL: %s", url);
             String body = String.format("{\"contents\":[{\"parts\":[{\"text\":\"%s\"}]}]}", prompt);
             HttpRequest request = HttpRequest.newBuilder().uri(URI.create("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=" + this.geminiApiKey)).header("Content-Type", "application/json").POST(HttpRequest.BodyPublishers.ofString(body)).build();
-            
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-            if (response.statusCode() != 200) {
-                logger.log("[Error] Gemini API Status: " + response.statusCode() + " Body: " + response.body());
-                return "Untitled Link";
-            }
-            
+            if (response.statusCode() != 200) return "Untitled Link";
             Map<String, Object> map = gson.fromJson(response.body(), Map.class);
             List<Object> cand = (List<Object>) map.get("candidates");
-            if (cand == null || cand.isEmpty()) return "Untitled Link";
-            
             Map<String, Object> cont = (Map<String, Object>) ((Map<String, Object>) cand.get(0)).get("content");
             List<Object> parts = (List<Object>) cont.get("parts");
-            String result = ((String) ((Map<String, Object>) parts.get(0)).get("text")).trim().split("\n")[0];
-            return result;
-        } catch (Exception e) {
-            logger.log("[Exception] AI Title Generation failed: " + e.getMessage());
-            return "Untitled Link";
-        }
+            return ((String) ((Map<String, Object>) parts.get(0)).get("text")).trim().split("\n")[0];
+        } catch (Exception e) { return "Untitled Link"; }
     }
 
     private String formatShortUrl(String baseUrl, String path, APIGatewayProxyRequestEvent input) {

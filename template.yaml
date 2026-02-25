@@ -25,6 +25,11 @@ Parameters:
     Type: String
     Default: "https://lessurl.site"
     Description: "단축 URL의 베이스 도메인"
+  AdminToken:
+    Type: String
+    Default: "admin1234"
+    Description: "관리자 페이지용 비밀 토큰"
+    NoEcho: true
 
 Globals:
   Function:
@@ -40,6 +45,7 @@ Globals:
         CLICKS_TABLE: !Ref ClicksTable
         TREND_INSIGHTS_TABLE: !Ref TrendInsightsTable
         AI_ANALYTIC_TABLE: !Ref AiAnalyticTable
+        SERVICE_MONITOR_TABLE: !Ref ServiceMonitorTable
         CORS_ALLOWED_ORIGIN: !Ref CorsAllowedOrigin
         DYNAMODB_ENDPOINT: ""
 
@@ -63,7 +69,7 @@ Resources:
       StageName: prod
       Cors:
         AllowMethods: "'GET,POST,OPTIONS'"
-        AllowHeaders: "'Content-Type'"
+        AllowHeaders: "'Content-Type,Authorization'"
         AllowOrigin: "'*'"
       # 백엔드가 메인 도메인을 차지합니다
       Domain:
@@ -155,6 +161,22 @@ Resources:
         - AttributeName: generatedAt
           KeyType: RANGE
 
+  ServiceMonitorTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: serviceMonitor
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: metricType
+          AttributeType: S
+        - AttributeName: timestamp
+          AttributeType: S
+      KeySchema:
+        - AttributeName: metricType
+          KeyType: HASH
+        - AttributeName: timestamp
+          KeyType: RANGE
+
   # Lambda Functions
   ShortenFunction:
     Type: AWS::Serverless::Function
@@ -181,7 +203,9 @@ Resources:
             - Effect: Allow
               Action:
                 - dynamodb:PutItem
-              Resource: !GetAtt UrlsTable.Arn
+              Resource: 
+                - !GetAtt UrlsTable.Arn
+                - !GetAtt ServiceMonitorTable.Arn
 
   RedirectFunction:
     Type: AWS::Serverless::Function
@@ -280,6 +304,10 @@ Resources:
                 - dynamodb:PutItem
                 - dynamodb:Query
               Resource: !GetAtt AiAnalyticTable.Arn
+            - Effect: Allow
+              Action:
+                - dynamodb:PutItem
+              Resource: !GetAtt ServiceMonitorTable.Arn
 
   ListPublicFunction:
     Type: AWS::Serverless::Function
@@ -304,6 +332,32 @@ Resources:
               Resource: 
                 - !GetAtt UrlsTable.Arn
                 - !Sub "${UrlsTable.Arn}/index/VisibilityIndex"
+
+  MonitorFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: LessUrlFunction
+      Handler: lessurl.MonitorHandler::handleRequest
+      SnapStart:
+        ApplyOn: PublishedVersions
+      Environment:
+        Variables:
+          NEXT_PUBLIC_ADMIN_TOKEN: !Ref AdminToken
+          CORS_ALLOWED_ORIGIN: !Ref CorsAllowedOrigin
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            RestApiId: !Ref UrlShortenerApi
+            Path: /admin/metrics
+            Method: GET
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:Query
+              Resource: !GetAtt ServiceMonitorTable.Arn
 
   MonitoringTopic:
     Type: AWS::SNS::Topic
