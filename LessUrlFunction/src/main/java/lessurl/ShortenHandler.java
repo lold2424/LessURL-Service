@@ -76,11 +76,11 @@ public class ShortenHandler extends BaseHandler<APIGatewayProxyRequestEvent, API
 
             String baseUrl = System.getenv("BASE_URL");
             String shortId = null;
-            int maxRetries = 10; // 충돌 시 재시도 횟수 상향
+            int maxRetries = 10;
             boolean saved = false;
 
             for (int i = 0; i < maxRetries; i++) {
-                shortId = IdGenerator.generateId(7); // Base62 기반 7글자 ID 생성
+                shortId = IdGenerator.generateId(7);
                 if (isAliasTaken(shortId, logger)) continue;
 
                 Map<String, AttributeValue> item = new HashMap<>();
@@ -151,19 +151,34 @@ public class ShortenHandler extends BaseHandler<APIGatewayProxyRequestEvent, API
     }
 
     private String generateTitleWithAi(String url, LambdaLogger logger) {
-        if (this.geminiApiKey == null || this.geminiApiKey.isEmpty()) return "Untitled Link";
+        if (this.geminiApiKey == null || this.geminiApiKey.isEmpty()) {
+            logger.log("[Warning] Gemini API Key is missing");
+            return "Untitled Link";
+        }
+
         try {
-            String prompt = String.format("사이트 성격을 잘 나타내는 짧은 한국어 제목 하나만 지어줘. 설명 없이 제목만 응답해. URL: %s", url);
+            String prompt = String.format("해당 웹사이트의 공식 명칭이나 제목을 한국어로 아주 짧게 응답해줘. 설명 없이 이름만 응답해. URL: %s", url);
             String body = String.format("{\"contents\":[{\"parts\":[{\"text\":\"%s\"}]}]}", prompt);
-            HttpRequest request = HttpRequest.newBuilder().uri(URI.create("https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=" + this.geminiApiKey)).header("Content-Type", "application/json").POST(HttpRequest.BodyPublishers.ofString(body)).build();
+            HttpRequest request = HttpRequest.newBuilder().uri(URI.create("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=" + this.geminiApiKey)).header("Content-Type", "application/json").POST(HttpRequest.BodyPublishers.ofString(body)).build();
+            
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-            if (response.statusCode() != 200) return "Untitled Link";
+            if (response.statusCode() != 200) {
+                logger.log("[Error] Gemini API Status: " + response.statusCode() + " Body: " + response.body());
+                return "Untitled Link";
+            }
+            
             Map<String, Object> map = gson.fromJson(response.body(), Map.class);
             List<Object> cand = (List<Object>) map.get("candidates");
+            if (cand == null || cand.isEmpty()) return "Untitled Link";
+            
             Map<String, Object> cont = (Map<String, Object>) ((Map<String, Object>) cand.get(0)).get("content");
             List<Object> parts = (List<Object>) cont.get("parts");
-            return ((String) ((Map<String, Object>) parts.get(0)).get("text")).trim().split("\n")[0];
-        } catch (Exception e) { return "Untitled Link"; }
+            String result = ((String) ((Map<String, Object>) parts.get(0)).get("text")).trim().split("\n")[0];
+            return result;
+        } catch (Exception e) {
+            logger.log("[Exception] AI Title Generation failed: " + e.getMessage());
+            return "Untitled Link";
+        }
     }
 
     private String formatShortUrl(String baseUrl, String path, APIGatewayProxyRequestEvent input) {
@@ -191,7 +206,7 @@ public class ShortenHandler extends BaseHandler<APIGatewayProxyRequestEvent, API
         try {
             String prompt = String.format("Analyze this URL for phishing or malware. Respond only with JSON: {\"classification\": \"SAFE\" or \"PHISHING\" or \"MALWARE\"}. URL: %s", url);
             String body = String.format("{\"contents\":[{\"parts\":[{\"text\":\"%s\"}]}],\"generationConfig\":{\"responseMimeType\":\"application/json\"}}", prompt);
-            HttpRequest req = HttpRequest.newBuilder().uri(URI.create("https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=" + this.geminiApiKey)).header("Content-Type", "application/json").POST(HttpRequest.BodyPublishers.ofString(body)).build();
+            HttpRequest req = HttpRequest.newBuilder().uri(URI.create("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=" + this.geminiApiKey)).header("Content-Type", "application/json").POST(HttpRequest.BodyPublishers.ofString(body)).build();
             HttpResponse<String> res = httpClient.send(req, HttpResponse.BodyHandlers.ofString());
             if (res.statusCode() != 200) return false;
             Map<String, Object> map = gson.fromJson(res.body(), Map.class);
