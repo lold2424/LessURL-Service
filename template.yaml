@@ -12,7 +12,7 @@ Parameters:
     Description: "Route 53 Hosted Zone ID for lessurl.site"
   CorsAllowedOrigin:
     Type: String
-    Default: "https://app.lessurl.site"
+    Default: "https://www.lessurl.site"
   GeminiApiKey:
     Type: String
     Description: Gemini API 키
@@ -49,6 +49,8 @@ Resources:
     Type: AWS::CertificateManager::Certificate
     Properties:
       DomainName: "lessurl.site"
+      SubjectAlternativeNames:
+        - "www.lessurl.site"
       ValidationMethod: DNS
       DomainValidationOptions:
         - DomainName: "lessurl.site"
@@ -197,6 +199,12 @@ Resources:
           Properties:
             RestApiId: !Ref UrlShortenerApi
             Path: /{shortId}
+            Method: GET
+        RootEvent:
+          Type: Api
+          Properties:
+            RestApiId: !Ref UrlShortenerApi
+            Path: /
             Method: GET
       Policies:
         - Version: '2012-10-17'

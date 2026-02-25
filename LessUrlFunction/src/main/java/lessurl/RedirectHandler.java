@@ -38,8 +38,10 @@ public class RedirectHandler extends BaseHandler<APIGatewayProxyRequestEvent, AP
     public APIGatewayProxyResponseEvent handleRequest(APIGatewayProxyRequestEvent input, Context context) {
         String inputId = input.getPathParameters() != null ? input.getPathParameters().get("shortId") : null;
 
-        if (inputId == null || inputId.isEmpty()) {
-            return createErrorResponse(400, "Short ID is required");
+        if (inputId == null || inputId.isEmpty() || inputId.equals("/")) {
+            APIGatewayProxyResponseEvent response = createResponse(301, "");
+            response.getHeaders().put("Location", "https://www.lessurl.site");
+            return response;
         }
 
         String shortId = inputId.trim();
