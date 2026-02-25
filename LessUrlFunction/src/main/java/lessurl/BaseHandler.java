@@ -27,6 +27,8 @@ public abstract class BaseHandler<I, O> implements RequestHandler<I, O> {
         this.gson = new GsonBuilder().setPrettyPrinting().create();
         this.urlsTable = System.getenv("URLS_TABLE");
         this.corsOrigin = System.getenv("CORS_ALLOWED_ORIGIN");
+        
+        System.out.println("Initializing BaseHandler. CORS Origin: " + this.corsOrigin);
 
         String dynamoDbEndpoint = System.getenv("DYNAMODB_ENDPOINT");
         String awsRegion = System.getenv("AWS_REGION");
