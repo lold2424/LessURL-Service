@@ -329,7 +329,7 @@ export default function Home() {
                 className="flex-1 md:w-64 px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-brand-orange focus:border-transparent outline-none transition-all"
               />
               <button
-                onClick={() => searchId && (window.location.href = `/stats?id=${searchId.split('/').pop()}`)}
+                onClick={() => searchId && (window.location.href = `/stats/?id=${searchId.split('/').pop()}`)}
                 className="bg-brand-navy hover:bg-brand-gray text-white font-bold py-3 px-6 rounded-xl transition-all shadow-lg shadow-brand-navy/20"
               >
                 {t.viewStatsBtn}

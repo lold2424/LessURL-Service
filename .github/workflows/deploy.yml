@@ -34,6 +34,7 @@ jobs:
           npm run build
         env:
           NEXT_PUBLIC_API_BASE_URL: ${{ secrets.NEXT_PUBLIC_API_BASE_URL }}
+          NEXT_PUBLIC_ADMIN_TOKEN: ${{ secrets.NEXT_PUBLIC_ADMIN_TOKEN }}
 
       - name: Deploy Frontend to S3 & CloudFront
         if: github.event_name == 'push' && github.ref == 'refs/heads/deploy'
