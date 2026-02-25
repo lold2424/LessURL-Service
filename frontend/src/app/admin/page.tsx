@@ -27,7 +27,7 @@ export default function AdminPage() {
     setLoading(true);
     try {
       const res = await fetch(`${apiBaseUrl}/admin/metrics`, {
-        headers: { "Authorization": ADMIN_TOKEN }
+        headers: { "Authorization": ADMIN_TOKEN || "" }
       });
       if (res.ok) {
         const data = await res.json();
