@@ -487,3 +487,5 @@ Outputs:
   ClicksTableName:
     Description: "Clicks DynamoDB Table"
     Value: !Ref ClicksTable
+
+# Force redeploy to apply new CORS settings
