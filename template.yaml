@@ -287,6 +287,9 @@ Resources:
       Handler: lessurl.StatsHandler::handleRequest
       SnapStart:
         ApplyOn: PublishedVersions
+      Environment:
+        Variables:
+          GEMINI_API_KEY: !Ref GeminiApiKey
       Events:
         ApiEvent:
           Type: Api

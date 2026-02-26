@@ -13,6 +13,11 @@ import software.amazon.awssdk.services.dynamodb.model.QueryResponse;
 import software.amazon.awssdk.services.lambda.LambdaClient;
 import software.amazon.awssdk.services.sqs.SqsClient;
 
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -24,6 +29,8 @@ public class StatsHandler extends BaseHandler<APIGatewayProxyRequestEvent, APIGa
 
     private final String clicksTable;
     private final String trendInsightsTable;
+    private final String geminiApiKey;
+    private final HttpClient httpClient;
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd").withZone(ZoneId.of("UTC"));
     private static final DateTimeFormatter HOUR_FORMATTER = DateTimeFormatter.ofPattern("H").withZone(ZoneId.of("UTC"));
 
@@ -31,12 +38,11 @@ public class StatsHandler extends BaseHandler<APIGatewayProxyRequestEvent, APIGa
         super();
         this.clicksTable = System.getenv("CLICKS_TABLE");
         this.trendInsightsTable = System.getenv("TREND_INSIGHTS_TABLE");
-    }
-
-    protected StatsHandler(DynamoDbClient ddb, LambdaClient lambda, SqsClient sqs, Gson gson, String urlsTable, String clicksTable, String trendInsightsTable) {
-        super(ddb, lambda, sqs, gson, urlsTable, "*");
-        this.clicksTable = clicksTable;
-        this.trendInsightsTable = trendInsightsTable;
+        this.geminiApiKey = System.getenv("GEMINI_API_KEY");
+        this.httpClient = HttpClient.newBuilder()
+                .version(HttpClient.Version.HTTP_1_1)
+                .connectTimeout(Duration.ofSeconds(15))
+                .build();
     }
 
     @Override
@@ -97,15 +103,20 @@ public class StatsHandler extends BaseHandler<APIGatewayProxyRequestEvent, APIGa
                     .expressionAttributeValues(Map.of(":id", AttributeValue.builder().s(shortId).build()))
                     .build());
 
-            Map<String, Map<String, Double>> trendStats = new HashMap<>();
+            Map<String, Double> countryStats = new HashMap<>();
+            Map<String, Double> deviceStats = new HashMap<>();
+
             for (Map<String, AttributeValue> item : trendRes.items()) {
                 String category = item.get("category").s();
-                Map<String, Double> statsData = new HashMap<>();
-                if (item.containsKey("statsData") && item.get("statsData").hasM()) {
-                    item.get("statsData").m().forEach((k, v) -> statsData.put(k, Double.parseDouble(v.n())));
-                }
-                trendStats.put(category.toLowerCase() + "Stats", statsData);
+                item.forEach((k, v) -> {
+                    if (!k.equals("shortId") && !k.equals("category") && !k.equals("lastUpdated")) {
+                        if ("COUNTRY".equals(category)) countryStats.put(k, Double.parseDouble(v.n()));
+                        else if ("DEVICE".equals(category)) deviceStats.put(k, Double.parseDouble(v.n()));
+                    }
+                });
             }
+
+            String aiInsight = generateAiInsight(totalClicks, clicksByReferer, countryStats, context);
 
             Map<String, Object> statsDetails = new HashMap<>();
             statsDetails.put("originalUrl", urlItem.get("originalUrl").s());
@@ -113,10 +124,11 @@ public class StatsHandler extends BaseHandler<APIGatewayProxyRequestEvent, APIGa
             statsDetails.put("clicksByDay", clicksByDay);
             statsDetails.put("clicksByHour", clicksByHour);
             statsDetails.put("clicksByReferer", clicksByReferer);
-            statsDetails.put("countryStats", trendStats.getOrDefault("countryStats", new HashMap<>()));
-            statsDetails.put("deviceStats", trendStats.getOrDefault("deviceStats", new HashMap<>()));
+            statsDetails.put("countryStats", countryStats);
+            statsDetails.put("deviceStats", deviceStats);
+            statsDetails.put("aiInsight", aiInsight);
             statsDetails.put("period", "7d");
-
+            
             String peakHour = clicksByHour.entrySet().stream()
                     .max(Map.Entry.comparingByValue())
                     .map(Map.Entry::getKey)
@@ -135,5 +147,33 @@ public class StatsHandler extends BaseHandler<APIGatewayProxyRequestEvent, APIGa
             context.getLogger().log("[Error] StatsHandler: " + e.getMessage());
             return createErrorResponse(500, "Internal Server Error");
         }
+    }
+
+    private String generateAiInsight(int total, Map<String, Long> referers, Map<String, Double> countries, Context context) {
+        if (this.geminiApiKey == null || total < 1) return "데이터가 부족하여 AI 분석을 생성할 수 없습니다.";
+        try {
+            String prompt = String.format(
+                "당신은 웹 로그 분석 전문가입니다. 다음 데이터를 보고 짧고 흥미로운 인사이트를 한국어로 한 문장으로 제공해줘.\n" +
+                "총 클릭 수: %d, 유입 경로: %s, 국가: %s. 불필요한 설명 없이 인사이트만 응답해.",
+                total, referers.toString(), countries.toString());
+
+            String body = String.format("{\"contents\":[{\"parts\":[{\"text\":\"%s\"}]}]}", prompt);
+            HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create("https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=" + this.geminiApiKey))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(body))
+                .build();
+
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() == 200) {
+                Map<String, Object> map = gson.fromJson(response.body(), Map.class);
+                List<Object> cand = (List<Object>) map.get("candidates");
+                Map<String, Object> cont = (Map<String, Object>) ((Map<String, Object>) cand.get(0)).get("content");
+                return ((String) ((Map<String, Object>) ((List<Object>) cont.get("parts")).get(0)).get("text")).trim();
+            }
+        } catch (Exception e) {
+            context.getLogger().log("Gemini Error: " + e.getMessage());
+        }
+        return "현재 통계 데이터를 분석 중입니다.";
     }
 }

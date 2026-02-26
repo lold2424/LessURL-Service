@@ -22,6 +22,7 @@ Thumbs.db
 *.log
 local-env.json
 event.json
+events/
 *~
 api-requests.http
 *.bat

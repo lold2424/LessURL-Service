@@ -75,7 +75,7 @@ public class AnalyticsHandler extends BaseHandler<SQSEvent, String> {
             updateTrendInsights(shortId, country, deviceType, logger);
         } catch (Exception e) {
             logger.log("[Error] processAnalytics failed for " + shortId + ": " + e.getMessage());
-            throw e;
+            throw e; 
         }
     }
 
@@ -87,7 +87,7 @@ public class AnalyticsHandler extends BaseHandler<SQSEvent, String> {
                             "shortId", AttributeValue.builder().s(shortId).build(),
                             "category", AttributeValue.builder().s("COUNTRY").build()
                     ))
-                    .updateExpression("ADD statsData.#c :inc SET lastUpdated = :now")
+                    .updateExpression("ADD #c :inc SET lastUpdated = :now")
                     .expressionAttributeNames(Map.of("#c", country))
                     .expressionAttributeValues(Map.of(
                             ":inc", AttributeValue.builder().n("1").build(),
@@ -101,7 +101,7 @@ public class AnalyticsHandler extends BaseHandler<SQSEvent, String> {
                             "shortId", AttributeValue.builder().s(shortId).build(),
                             "category", AttributeValue.builder().s("DEVICE").build()
                     ))
-                    .updateExpression("ADD statsData.#d :inc SET lastUpdated = :now")
+                    .updateExpression("ADD #d :inc SET lastUpdated = :now")
                     .expressionAttributeNames(Map.of("#d", deviceType))
                     .expressionAttributeValues(Map.of(
                             ":inc", AttributeValue.builder().n("1").build(),
