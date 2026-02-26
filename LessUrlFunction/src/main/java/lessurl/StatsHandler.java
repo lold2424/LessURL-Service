@@ -45,6 +45,14 @@ public class StatsHandler extends BaseHandler<APIGatewayProxyRequestEvent, APIGa
                 .build();
     }
 
+    protected StatsHandler(DynamoDbClient ddb, LambdaClient lambda, SqsClient sqs, Gson gson, String urlsTable, String clicksTable, String trendInsightsTable) {
+        super(ddb, lambda, sqs, gson, urlsTable, "*");
+        this.clicksTable = clicksTable;
+        this.trendInsightsTable = trendInsightsTable;
+        this.geminiApiKey = null;
+        this.httpClient = null;
+    }
+
     @Override
     public APIGatewayProxyResponseEvent handleRequest(APIGatewayProxyRequestEvent input, Context context) {
         String shortId = input.getPathParameters() != null ? input.getPathParameters().get("shortId") : null;

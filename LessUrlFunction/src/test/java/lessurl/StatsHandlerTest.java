@@ -74,9 +74,8 @@ class StatsHandlerTest {
 
         Map<String, AttributeValue> trendItem = new HashMap<>();
         trendItem.put("category", AttributeValue.builder().s("COUNTRY").build());
-        Map<String, AttributeValue> statsData = new HashMap<>();
-        statsData.put("KR", AttributeValue.builder().n("5").build());
-        trendItem.put("statsData", AttributeValue.builder().m(statsData).build());
+        trendItem.put("KR", AttributeValue.builder().n("5").build());
+        trendItem.put("shortId", AttributeValue.builder().s(shortId).build());
         
         QueryResponse trendQueryRes = QueryResponse.builder().items(List.of(trendItem)).build();
 
@@ -92,10 +91,14 @@ class StatsHandlerTest {
         Map responseBody = gson.fromJson(response.getBody(), Map.class);
         Map stats = (Map) responseBody.get("stats");
 
-        assertEquals(10.0, responseBody.get("clicks"));
+        assertEquals(10.0, responseBody.get("clicks")); // clickCount
         assertTrue(stats.containsKey("clicksByDay"));
         assertTrue(stats.containsKey("countryStats"));
-        assertEquals(5.0, ((Map)stats.get("countryStats")).get("KR"));
-        assertEquals(1.0, ((Map)stats.get("clicksByReferer")).get("https://google.com"));
+        
+        Map countryStats = (Map) stats.get("countryStats");
+        assertEquals(5.0, countryStats.get("KR"));
+        
+        Map refererStats = (Map) stats.get("clicksByReferer");
+        assertEquals(1.0, refererStats.get("https://google.com"));
     }
 }
