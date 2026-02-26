@@ -119,11 +119,7 @@ public class ShortenHandler extends BaseHandler<APIGatewayProxyRequestEvent, API
             String shortUrl = formatShortUrl(baseUrl, finalPath, input);
 
             long duration = System.currentTimeMillis() - startTime;
-            Map<String, Object> perfData = new HashMap<>();
-            perfData.put("path", "/shorten");
-            perfData.put("duration", duration);
-            perfData.put("url", originalUrl);
-            recordMetric("PERFORMANCE", perfData);
+            recordMetric("PERFORMANCE", Map.of("path", "/shorten", "duration", duration, "url", originalUrl));
 
             Map<String, String> responseBody = new HashMap<>();
             responseBody.put("shortId", shortId);
@@ -134,10 +130,7 @@ public class ShortenHandler extends BaseHandler<APIGatewayProxyRequestEvent, API
 
         } catch (Exception e) {
             logger.log("[Error] " + e.getMessage());
-            Map<String, Object> errorData = new HashMap<>();
-            errorData.put("path", "/shorten");
-            errorData.put("message", e.getMessage());
-            recordMetric("ERROR_5XX", errorData);
+            recordMetric("ERROR_5XX", Map.of("path", "/shorten", "message", e.getMessage()));
             return createErrorResponse(500, "Server Error: " + e.getMessage());
         }
     }
@@ -166,7 +159,7 @@ public class ShortenHandler extends BaseHandler<APIGatewayProxyRequestEvent, API
         try {
             String prompt = String.format("해당 웹사이트의 공식 명칭이나 제목을 한국어로 아주 짧게 응답해줘. 설명 없이 이름만 응답해. URL: %s", url);
             String body = String.format("{\"contents\":[{\"parts\":[{\"text\":\"%s\"}]}]}", prompt);
-            HttpRequest request = HttpRequest.newBuilder().uri(URI.create("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=" + this.geminiApiKey)).header("Content-Type", "application/json").POST(HttpRequest.BodyPublishers.ofString(body)).build();
+            HttpRequest request = HttpRequest.newBuilder().uri(URI.create("https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash-lite:generateContent?key=" + this.geminiApiKey)).header("Content-Type", "application/json").POST(HttpRequest.BodyPublishers.ofString(body)).build();
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() != 200) return "Untitled Link";
             Map<String, Object> map = gson.fromJson(response.body(), Map.class);
@@ -202,7 +195,7 @@ public class ShortenHandler extends BaseHandler<APIGatewayProxyRequestEvent, API
         try {
             String prompt = String.format("Analyze this URL for phishing or malware. Respond only with JSON: {\"classification\": \"SAFE\" or \"PHISHING\" or \"MALWARE\"}. URL: %s", url);
             String body = String.format("{\"contents\":[{\"parts\":[{\"text\":\"%s\"}]}],\"generationConfig\":{\"responseMimeType\":\"application/json\"}}", prompt);
-            HttpRequest req = HttpRequest.newBuilder().uri(URI.create("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=" + this.geminiApiKey)).header("Content-Type", "application/json").POST(HttpRequest.BodyPublishers.ofString(body)).build();
+            HttpRequest req = HttpRequest.newBuilder().uri(URI.create("https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash-lite:generateContent?key=" + this.geminiApiKey)).header("Content-Type", "application/json").POST(HttpRequest.BodyPublishers.ofString(body)).build();
             HttpResponse<String> res = httpClient.send(req, HttpResponse.BodyHandlers.ofString());
             if (res.statusCode() != 200) return false;
             Map<String, Object> map = gson.fromJson(res.body(), Map.class);

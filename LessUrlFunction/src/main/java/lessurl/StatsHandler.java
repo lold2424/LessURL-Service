@@ -5,11 +5,7 @@ import com.amazonaws.services.lambda.runtime.events.APIGatewayProxyRequestEvent;
 import com.amazonaws.services.lambda.runtime.events.APIGatewayProxyResponseEvent;
 import com.google.gson.Gson;
 import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
-import software.amazon.awssdk.services.dynamodb.model.AttributeValue;
-import software.amazon.awssdk.services.dynamodb.model.GetItemRequest;
-import software.amazon.awssdk.services.dynamodb.model.GetItemResponse;
-import software.amazon.awssdk.services.dynamodb.model.QueryRequest;
-import software.amazon.awssdk.services.dynamodb.model.QueryResponse;
+import software.amazon.awssdk.services.dynamodb.model.*;
 import software.amazon.awssdk.services.lambda.LambdaClient;
 import software.amazon.awssdk.services.sqs.SqsClient;
 
@@ -55,23 +51,41 @@ public class StatsHandler extends BaseHandler<APIGatewayProxyRequestEvent, APIGa
 
     @Override
     public APIGatewayProxyResponseEvent handleRequest(APIGatewayProxyRequestEvent input, Context context) {
-        String shortId = input.getPathParameters() != null ? input.getPathParameters().get("shortId") : null;
+        String inputId = input.getPathParameters() != null ? input.getPathParameters().get("shortId") : null;
 
-        if (shortId == null || shortId.isEmpty()) {
-            return createErrorResponse(400, "Short ID is required");
+        if (inputId == null || inputId.isEmpty()) {
+            return createErrorResponse(400, "ID is required");
         }
 
         try {
             GetItemResponse urlRes = ddb.getItem(GetItemRequest.builder()
                     .tableName(this.urlsTable)
-                    .key(Map.of("shortId", AttributeValue.builder().s(shortId).build()))
+                    .key(Map.of("shortId", AttributeValue.builder().s(inputId).build()))
                     .build());
 
-            if (!urlRes.hasItem()) {
-                return createErrorResponse(404, "URL not found");
+            Map<String, AttributeValue> urlItem;
+            String shortId;
+
+            if (urlRes.hasItem()) {
+                urlItem = urlRes.item();
+                shortId = inputId;
+            } else {
+                QueryResponse aliasRes = ddb.query(QueryRequest.builder()
+                        .tableName(this.urlsTable)
+                        .indexName("CustomAliasIndex")
+                        .keyConditionExpression("customAlias = :a")
+                        .expressionAttributeValues(Map.of(":a", AttributeValue.builder().s(inputId).build()))
+                        .limit(1)
+                        .build());
+                
+                if (aliasRes.hasItems() && !aliasRes.items().isEmpty()) {
+                    urlItem = aliasRes.items().get(0);
+                    shortId = urlItem.get("shortId").s();
+                } else {
+                    return createErrorResponse(404, "URL not found");
+                }
             }
 
-            Map<String, AttributeValue> urlItem = urlRes.item();
             int totalClicks = urlItem.containsKey("clickCount") ? Integer.parseInt(urlItem.get("clickCount").n()) : 0;
 
             String sevenDaysAgo = Instant.now().minus(7, ChronoUnit.DAYS).toString();
@@ -124,9 +138,24 @@ public class StatsHandler extends BaseHandler<APIGatewayProxyRequestEvent, APIGa
                 });
             }
 
-            String aiInsight = generateAiInsight(totalClicks, clicksByReferer, countryStats, context);
+            String peakHour = clicksByHour.entrySet().stream()
+                    .max(Map.Entry.comparingByValue())
+                    .map(Map.Entry::getKey)
+                    .orElse("0");
+
+            Map<String, Object> allStats = new HashMap<>();
+            allStats.put("totalClicks", totalClicks);
+            allStats.put("dailyTrends", clicksByDay);
+            allStats.put("hourlyDistribution", clicksByHour);
+            allStats.put("peakHour", peakHour);
+            allStats.put("referers", clicksByReferer);
+            allStats.put("countries", countryStats);
+            allStats.put("devices", deviceStats);
+
+            String aiInsight = generateAiInsight(allStats, context);
 
             Map<String, Object> statsDetails = new HashMap<>();
+            statsDetails.put("shortId", shortId);
             statsDetails.put("originalUrl", urlItem.get("originalUrl").s());
             statsDetails.put("title", urlItem.containsKey("title") ? urlItem.get("title").s() : "Untitled");
             statsDetails.put("clicksByDay", clicksByDay);
@@ -136,11 +165,6 @@ public class StatsHandler extends BaseHandler<APIGatewayProxyRequestEvent, APIGa
             statsDetails.put("deviceStats", deviceStats);
             statsDetails.put("aiInsight", aiInsight);
             statsDetails.put("period", "7d");
-            
-            String peakHour = clicksByHour.entrySet().stream()
-                    .max(Map.Entry.comparingByValue())
-                    .map(Map.Entry::getKey)
-                    .orElse("0");
             statsDetails.put("peakHour", Integer.parseInt(peakHour));
 
             Map<String, Object> responseData = new HashMap<>();
@@ -157,17 +181,30 @@ public class StatsHandler extends BaseHandler<APIGatewayProxyRequestEvent, APIGa
         }
     }
 
-    private String generateAiInsight(int total, Map<String, Long> referers, Map<String, Double> countries, Context context) {
-        if (this.geminiApiKey == null || total < 1) return "데이터가 부족하여 AI 분석을 생성할 수 없습니다.";
+    private String generateAiInsight(Map<String, Object> stats, Context context) {
+        if (this.geminiApiKey == null || (int)stats.get("totalClicks") < 1) 
+            return "충분한 방문 데이터가 수집된 후 정밀 AI 분석이 제공됩니다.";
+            
         try {
             String prompt = String.format(
-                "당신은 웹 로그 분석 전문가입니다. 다음 데이터를 보고 짧고 흥미로운 인사이트를 한국어로 한 문장으로 제공해줘.\n" +
-                "총 클릭 수: %d, 유입 경로: %s, 국가: %s. 불필요한 설명 없이 인사이트만 응답해.",
-                total, referers.toString(), countries.toString());
+                "당신은 데이터 분석 전문가입니다. 아래 제공된 URL 클릭 통계 데이터를 종합적으로 분석하여, " +
+                "사용자 행동 패턴과 유의미한 비즈니스 인사이트를 한국어로 아주 명확하고 전문적으로 요약해줘. " +
+                "불필요한 인사말은 생략하고 3문장 이내로 핵심만 작성해.\n\n" +
+                "데이터: %s", gson.toJson(stats));
 
-            String body = String.format("{\"contents\":[{\"parts\":[{\"text\":\"%s\"}]}]}", prompt);
+            Map<String, Object> part = Map.of("text", prompt);
+            Map<String, Object> content = Map.of("parts", List.of(part));
+            Map<String, Object> requestMap = Map.of(
+                "contents", List.of(content),
+                "generationConfig", Map.of(
+                    "temperature", 0.7,
+                    "maxOutputTokens", 500
+                )
+            );
+            String body = gson.toJson(requestMap);
+
             HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create("https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=" + this.geminiApiKey))
+                .uri(URI.create("https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash-lite:generateContent?key=" + this.geminiApiKey))
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(body))
                 .build();
@@ -175,13 +212,21 @@ public class StatsHandler extends BaseHandler<APIGatewayProxyRequestEvent, APIGa
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() == 200) {
                 Map<String, Object> map = gson.fromJson(response.body(), Map.class);
-                List<Object> cand = (List<Object>) map.get("candidates");
-                Map<String, Object> cont = (Map<String, Object>) ((Map<String, Object>) cand.get(0)).get("content");
-                return ((String) ((Map<String, Object>) ((List<Object>) cont.get("parts")).get(0)).get("text")).trim();
+                List<Object> candidates = (List<Object>) map.get("candidates");
+                if (candidates != null && !candidates.isEmpty()) {
+                    Map<String, Object> candidate = (Map<String, Object>) candidates.get(0);
+                    Map<String, Object> resContent = (Map<String, Object>) candidate.get("content");
+                    List<Object> parts = (List<Object>) resContent.get("parts");
+                    if (parts != null && !parts.isEmpty()) {
+                        String result = (String) ((Map<String, Object>) parts.get(0)).get("text");
+                        return result.trim().replaceAll("\\*", "");
+                    }
+                }
             }
+            context.getLogger().log("Gemini API Error: " + response.statusCode() + " - " + response.body());
         } catch (Exception e) {
-            context.getLogger().log("Gemini Error: " + e.getMessage());
+            context.getLogger().log("Gemini Exception: " + e.getMessage());
         }
-        return "현재 통계 데이터를 분석 중입니다.";
+        return "데이터 분석 중 오류가 발생했습니다. 잠시 후 다시 확인해주세요.";
     }
 }
