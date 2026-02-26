@@ -35,8 +35,8 @@ public class ShortenHandler extends BaseHandler<APIGatewayProxyRequestEvent, API
                 .build();
     }
 
-    protected ShortenHandler(DynamoDbClient ddb, LambdaClient lambda, Gson gson, String urlsTable, String geminiApiKey, String safeBrowsingApiKey, HttpClient httpClient) {
-        super(ddb, lambda, gson, urlsTable, "*");
+    protected ShortenHandler(DynamoDbClient ddb, LambdaClient lambda, software.amazon.awssdk.services.sqs.SqsClient sqs, Gson gson, String urlsTable, String geminiApiKey, String safeBrowsingApiKey, HttpClient httpClient) {
+        super(ddb, lambda, sqs, gson, urlsTable, "*");
         this.geminiApiKey = geminiApiKey;
         this.safeBrowsingApiKey = safeBrowsingApiKey;
         this.httpClient = httpClient;
@@ -118,7 +118,6 @@ public class ShortenHandler extends BaseHandler<APIGatewayProxyRequestEvent, API
             String finalPath = (customAlias != null && !customAlias.trim().isEmpty()) ? customAlias.trim() : shortId;
             String shortUrl = formatShortUrl(baseUrl, finalPath, input);
 
-            // 5. 성공 시 성능 지표 기록
             long duration = System.currentTimeMillis() - startTime;
             Map<String, Object> perfData = new HashMap<>();
             perfData.put("path", "/shorten");

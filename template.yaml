@@ -177,6 +177,12 @@ Resources:
         - AttributeName: timestamp
           KeyType: RANGE
 
+  # SQS Queue for Analytics
+  AnalyticsQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      VisibilityTimeout: 90 # Lambda Timeout(60s)보다 길게 설정
+
   # Lambda Functions
   ShortenFunction:
     Type: AWS::Serverless::Function
@@ -216,7 +222,7 @@ Resources:
         ApplyOn: PublishedVersions
       Environment:
         Variables:
-          ANALYTICS_FUNCTION_NAME: !Ref AnalyticsFunction
+          ANALYTICS_QUEUE_URL: !Ref AnalyticsQueue
       Events:
         ApiEvent:
           Type: Api
@@ -242,8 +248,8 @@ Resources:
                 - !Sub "${UrlsTable.Arn}/index/CustomAliasIndex"
             - Effect: Allow
               Action:
-                - lambda:InvokeFunction
-              Resource: !GetAtt AnalyticsFunction.Arn
+                - sqs:SendMessage
+              Resource: !GetAtt AnalyticsQueue.Arn
 
   AnalyticsFunction:
     Type: AWS::Serverless::Function
@@ -252,6 +258,12 @@ Resources:
       Handler: lessurl.AnalyticsHandler::handleRequest
       SnapStart:
         ApplyOn: PublishedVersions
+      Events:
+        SqsEvent:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt AnalyticsQueue.Arn
+            BatchSize: 10
       Policies:
         - Version: '2012-10-17'
           Statement:

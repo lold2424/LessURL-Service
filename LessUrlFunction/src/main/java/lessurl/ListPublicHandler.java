@@ -13,6 +13,14 @@ import java.util.stream.Collectors;
 
 public class ListPublicHandler extends BaseHandler<APIGatewayProxyRequestEvent, APIGatewayProxyResponseEvent> {
 
+    public ListPublicHandler() {
+        super();
+    }
+
+    protected ListPublicHandler(software.amazon.awssdk.services.dynamodb.DynamoDbClient ddb, software.amazon.awssdk.services.lambda.LambdaClient lambda, software.amazon.awssdk.services.sqs.SqsClient sqs, com.google.gson.Gson gson, String urlsTable) {
+        super(ddb, lambda, sqs, gson, urlsTable, "*");
+    }
+
     @Override
     public APIGatewayProxyResponseEvent handleRequest(APIGatewayProxyRequestEvent input, Context context) {
         try {

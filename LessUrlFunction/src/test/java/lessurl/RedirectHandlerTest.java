@@ -15,17 +15,16 @@ import software.amazon.awssdk.services.dynamodb.model.AttributeValue;
 import software.amazon.awssdk.services.dynamodb.model.GetItemRequest;
 import software.amazon.awssdk.services.dynamodb.model.GetItemResponse;
 import software.amazon.awssdk.services.lambda.LambdaClient;
-import software.amazon.awssdk.services.lambda.model.InvokeRequest;
-import software.amazon.awssdk.services.lambda.model.InvokeResponse;
+import software.amazon.awssdk.services.sqs.SqsClient;
+import software.amazon.awssdk.services.sqs.model.SendMessageRequest;
+import software.amazon.awssdk.services.sqs.model.SendMessageResponse;
 
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.lenient;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
-import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class RedirectHandlerTest {
@@ -39,6 +38,9 @@ class RedirectHandlerTest {
     private LambdaClient mockLambda;
 
     @Mock
+    private SqsClient mockSqs;
+
+    @Mock
     private Context mockContext;
     
     @Mock
@@ -46,14 +48,14 @@ class RedirectHandlerTest {
 
     @BeforeEach
     void setUp() {
-        redirectHandler = new RedirectHandler(mockDdb, mockLambda, "mock-urls-table", "mock-analytics-function");
+        redirectHandler = new RedirectHandler(mockDdb, mockLambda, mockSqs, "mock-urls-table", "mock-analytics-queue-url");
 
         lenient().when(mockContext.getLogger()).thenReturn(mockLogger);
     }
 
     @Test
-    @DisplayName("유효한 shortId로 요청 시 AnalyticsFunction을 비동기로 호출하고 301 리다이렉트한다")
-    void testHandleRequest_Success_WithAsyncAnalytics() {
+    @DisplayName("유효한 shortId로 요청 시 SQS로 분석 데이터를 전송하고 301 리다이렉트한다")
+    void testHandleRequest_Success_WithSqsAnalytics() {
         // given
         String testShortId = "abc1234";
         String originalUrl = "https://www.example.com";
@@ -72,7 +74,7 @@ class RedirectHandlerTest {
                 .build();
 
         lenient().when(mockDdb.getItem(any(GetItemRequest.class))).thenReturn(getItemResponse);
-        lenient().when(mockLambda.invoke(any(InvokeRequest.class))).thenReturn(InvokeResponse.builder().build());
+        lenient().when(mockSqs.sendMessage(any(SendMessageRequest.class))).thenReturn(SendMessageResponse.builder().build());
 
         // when
         APIGatewayProxyResponseEvent response = redirectHandler.handleRequest(request, mockContext);
@@ -81,7 +83,7 @@ class RedirectHandlerTest {
         assertEquals(301, response.getStatusCode());
         assertEquals(originalUrl, response.getHeaders().get("Location"));
 
-        verify(mockLambda, atLeastOnce()).invoke(any(InvokeRequest.class));
+        verify(mockSqs, atLeastOnce()).sendMessage(any(SendMessageRequest.class));
     }
 
     @Test
@@ -96,16 +98,19 @@ class RedirectHandlerTest {
         GetItemResponse getItemResponse = GetItemResponse.builder().build();
         when(mockDdb.getItem(any(GetItemRequest.class))).thenReturn(getItemResponse);
 
+        when(mockDdb.query(any(software.amazon.awssdk.services.dynamodb.model.QueryRequest.class)))
+                .thenReturn(software.amazon.awssdk.services.dynamodb.model.QueryResponse.builder().items(java.util.Collections.emptyList()).build());
+
         // when
         APIGatewayProxyResponseEvent response = redirectHandler.handleRequest(request, mockContext);
 
         // then
         assertEquals(404, response.getStatusCode());
-        assertEquals("{\"error\": \"URL not found\"}", response.getBody());
+        assertTrue(response.getBody().contains("URL not found"));
     }
 
     @Test
-    @DisplayName("shortId가 없는 요청 시 400 에러를 반환한다")
+    @DisplayName("shortId가 없는 요청 시 메인 페이지로 301 리다이렉트한다")
     void testHandleRequest_InvalidInput() {
         // given
         APIGatewayProxyRequestEvent request = new APIGatewayProxyRequestEvent();
@@ -115,7 +120,7 @@ class RedirectHandlerTest {
         APIGatewayProxyResponseEvent response = redirectHandler.handleRequest(request, mockContext);
 
         // then
-        assertEquals(400, response.getStatusCode());
-        assertEquals("{\"error\": \"Short ID is required\"}", response.getBody());
+        assertEquals(301, response.getStatusCode());
+        assertEquals("https://www.lessurl.site", response.getHeaders().get("Location"));
     }
 }

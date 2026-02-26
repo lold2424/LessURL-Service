@@ -21,10 +21,11 @@ dependencies {
     // JSON 처리기 (Gson) - ShortenHandler에서 사용
     implementation 'com.google.code.gson:gson:2.10.1'
 
-    // AWS SDK v2 (DynamoDB 및 Lambda 호출용)
+    // AWS SDK v2 (DynamoDB, Lambda, SQS 호출용)
     implementation platform('software.amazon.awssdk:bom:2.29.0')
     implementation 'software.amazon.awssdk:dynamodb'
     implementation 'software.amazon.awssdk:lambda'
+    implementation 'software.amazon.awssdk:sqs'
     implementation 'software.amazon.awssdk:url-connection-client'
 
     // 로깅
@@ -46,6 +47,15 @@ shadowJar {
 }
 
 build.dependsOn shadowJar
+
+test {
+    useJUnitPlatform()
+    testLogging {
+        events "passed", "skipped", "failed", "standardOut", "standardError"
+        showStandardStreams = true
+        exceptionFormat = "full"
+    }
+}
 
 tasks.withType(JavaCompile) {
     options.encoding = 'UTF-8'

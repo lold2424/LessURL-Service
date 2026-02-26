@@ -11,8 +11,7 @@ import software.amazon.awssdk.services.dynamodb.model.AttributeValue;
 import software.amazon.awssdk.services.dynamodb.model.GetItemRequest;
 import software.amazon.awssdk.services.dynamodb.model.GetItemResponse;
 import software.amazon.awssdk.services.lambda.LambdaClient;
-import software.amazon.awssdk.services.lambda.model.InvocationType;
-import software.amazon.awssdk.services.lambda.model.InvokeRequest;
+import software.amazon.awssdk.services.sqs.model.SendMessageRequest;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -22,16 +21,16 @@ import java.util.Map;
 
 public class RedirectHandler extends BaseHandler<APIGatewayProxyRequestEvent, APIGatewayProxyResponseEvent> {
 
-    private final String analyticsFunctionName;
+    private final String analyticsQueueUrl;
 
     public RedirectHandler() {
         super();
-        this.analyticsFunctionName = System.getenv("ANALYTICS_FUNCTION_NAME");
+        this.analyticsQueueUrl = System.getenv("ANALYTICS_QUEUE_URL");
     }
 
-    protected RedirectHandler(DynamoDbClient ddb, LambdaClient lambda, String urlsTable, String analyticsFunctionName) {
-        super(ddb, lambda, new Gson(), urlsTable, "*");
-        this.analyticsFunctionName = analyticsFunctionName;
+    protected RedirectHandler(DynamoDbClient ddb, LambdaClient lambda, software.amazon.awssdk.services.sqs.SqsClient sqs, String urlsTable, String analyticsQueueUrl) {
+        super(ddb, lambda, sqs, new Gson(), urlsTable, "*");
+        this.analyticsQueueUrl = analyticsQueueUrl;
     }
 
     @Override
@@ -76,9 +75,9 @@ public class RedirectHandler extends BaseHandler<APIGatewayProxyRequestEvent, AP
             String originalUrl = item.get("originalUrl").s();
 
             try {
-                triggerAnalyticsAsync(shortId, input, context.getLogger());
+                sendToAnalyticsQueue(shortId, input, context.getLogger());
             } catch (Exception e) {
-                context.getLogger().log("[Warning] Failed to trigger analytics: " + e.getMessage());
+                context.getLogger().log("[Warning] Failed to send to analytics queue: " + e.getMessage());
             }
 
             APIGatewayProxyResponseEvent response = createResponse(301, "");
@@ -93,8 +92,8 @@ public class RedirectHandler extends BaseHandler<APIGatewayProxyRequestEvent, AP
         }
     }
     
-    private void triggerAnalyticsAsync(String shortId, APIGatewayProxyRequestEvent input, LambdaLogger logger) {
-        if (this.analyticsFunctionName == null) return;
+    private void sendToAnalyticsQueue(String shortId, APIGatewayProxyRequestEvent input, LambdaLogger logger) {
+        if (this.analyticsQueueUrl == null) return;
 
         String ip = "unknown";
         if (input.getRequestContext() != null && input.getRequestContext().getIdentity() != null) {
@@ -122,14 +121,13 @@ public class RedirectHandler extends BaseHandler<APIGatewayProxyRequestEvent, AP
         payload.put("country", country);
         payload.put("deviceType", deviceType);
 
-        InvokeRequest invokeRequest = InvokeRequest.builder()
-                .functionName(this.analyticsFunctionName)
-                .invocationType(InvocationType.EVENT)
-                .payload(SdkBytes.fromUtf8String(gson.toJson(payload)))
+        SendMessageRequest sendMsgRequest = SendMessageRequest.builder()
+                .queueUrl(this.analyticsQueueUrl)
+                .messageBody(gson.toJson(payload))
                 .build();
 
-        lambda.invoke(invokeRequest);
-        logger.log("[Success] Triggered AnalyticsFunction for " + shortId);
+        sqs.sendMessage(sendMsgRequest);
+        logger.log("[Success] Sent to AnalyticsQueue for " + shortId);
     }
 
     private String hashIp(String ip) {

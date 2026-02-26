@@ -2,6 +2,7 @@ package lessurl;
 
 import com.amazonaws.services.lambda.runtime.Context;
 import com.amazonaws.services.lambda.runtime.LambdaLogger;
+import com.amazonaws.services.lambda.runtime.events.SQSEvent;
 import software.amazon.awssdk.services.dynamodb.model.AttributeValue;
 import software.amazon.awssdk.services.dynamodb.model.PutItemRequest;
 import software.amazon.awssdk.services.dynamodb.model.UpdateItemRequest;
@@ -10,7 +11,7 @@ import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
 
-public class AnalyticsHandler extends BaseHandler<Map<String, String>, String> {
+public class AnalyticsHandler extends BaseHandler<SQSEvent, String> {
 
     private final String clicksTable;
     private final String trendInsightsTable;
@@ -22,8 +23,26 @@ public class AnalyticsHandler extends BaseHandler<Map<String, String>, String> {
     }
 
     @Override
-    public String handleRequest(Map<String, String> input, Context context) {
+    public String handleRequest(SQSEvent event, Context context) {
         LambdaLogger logger = context.getLogger();
+        int successCount = 0;
+
+        for (SQSEvent.SQSMessage msg : event.getRecords()) {
+            try {
+                @SuppressWarnings("unchecked")
+                Map<String, String> input = gson.fromJson(msg.getBody(), Map.class);
+                processAnalytics(input, logger);
+                successCount++;
+            } catch (Exception e) {
+                logger.log("[Error] Failed to process SQS message " + msg.getMessageId() + ": " + e.getMessage());
+            }
+        }
+
+        logger.log(String.format("[Batch Success] Processed %d/%d messages", successCount, event.getRecords().size()));
+        return "SUCCESS";
+    }
+
+    private void processAnalytics(Map<String, String> input, LambdaLogger logger) {
         String shortId = input.get("shortId");
         String ip = input.getOrDefault("ip", "unknown");
         String userAgent = input.getOrDefault("userAgent", "unknown");
@@ -54,12 +73,9 @@ public class AnalyticsHandler extends BaseHandler<Map<String, String>, String> {
                     .build());
 
             updateTrendInsights(shortId, country, deviceType, logger);
-
-            logger.log("[Success] Analytics processed for " + shortId);
-            return "SUCCESS";
         } catch (Exception e) {
-            logger.log("[Error] Analytics processing failed: " + e.getMessage());
-            return "ERROR";
+            logger.log("[Error] processAnalytics failed for " + shortId + ": " + e.getMessage());
+            throw e;
         }
     }
 

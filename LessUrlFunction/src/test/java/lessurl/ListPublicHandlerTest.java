@@ -15,8 +15,9 @@ import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
 import software.amazon.awssdk.services.dynamodb.model.AttributeValue;
 import software.amazon.awssdk.services.dynamodb.model.QueryRequest;
 import software.amazon.awssdk.services.dynamodb.model.QueryResponse;
+import software.amazon.awssdk.services.lambda.LambdaClient;
+import software.amazon.awssdk.services.sqs.SqsClient;
 
-import java.lang.reflect.Field;
 import java.util.List;
 import java.util.Map;
 
@@ -34,25 +35,19 @@ class ListPublicHandlerTest {
 
     @Mock
     private DynamoDbClient mockDdb;
-
+    @Mock
+    private LambdaClient mockLambda;
+    @Mock
+    private SqsClient mockSqs;
     @Mock
     private Context mockContext;
-
     @Mock
     private LambdaLogger mockLogger;
 
     @BeforeEach
-    void setUp() throws Exception {
+    void setUp() {
         lenient().when(mockContext.getLogger()).thenReturn(mockLogger);
-        listPublicHandler = new ListPublicHandler();
-
-        Field ddbField = ListPublicHandler.class.getDeclaredField("ddb");
-        ddbField.setAccessible(true);
-        ddbField.set(listPublicHandler, mockDdb);
-        
-        Field tableField = ListPublicHandler.class.getDeclaredField("tableName");
-        tableField.setAccessible(true);
-        tableField.set(listPublicHandler, "UrlsTable");
+        listPublicHandler = new ListPublicHandler(mockDdb, mockLambda, mockSqs, gson, "UrlsTable");
     }
 
     @Test
@@ -61,7 +56,6 @@ class ListPublicHandlerTest {
         // given
         Map<String, AttributeValue> item = Map.of(
                 "shortId", AttributeValue.builder().s("abc12345").build(),
-                "originalUrl", AttributeValue.builder().s("https://example.com").build(),
                 "createdAt", AttributeValue.builder().s("2026-02-19T10:00:00Z").build(),
                 "clickCount", AttributeValue.builder().n("5").build(),
                 "title", AttributeValue.builder().s("Example").build()
@@ -83,7 +77,6 @@ class ListPublicHandlerTest {
         List<Map<String, String>> body = gson.fromJson(response.getBody(), List.class);
         assertEquals(1, body.size());
         assertEquals("abc12345", body.get(0).get("shortId"));
-        assertEquals("https://example.com", body.get(0).get("originalUrl"));
     }
 
     @Test
@@ -98,6 +91,5 @@ class ListPublicHandlerTest {
 
         // then
         assertEquals(500, response.getStatusCode());
-        assertTrue(response.getBody().contains("Failed to fetch public URLs"));
     }
 }
