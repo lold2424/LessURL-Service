@@ -209,7 +209,7 @@ Resources:
             - Effect: Allow
               Action:
                 - dynamodb:PutItem
-              Resource: 
+              Resource:
                 - !GetAtt UrlsTable.Arn
                 - !GetAtt ServiceMonitorTable.Arn
 
@@ -243,7 +243,7 @@ Resources:
               Action:
                 - dynamodb:GetItem
                 - dynamodb:Query
-              Resource: 
+              Resource:
                 - !GetAtt UrlsTable.Arn
                 - !Sub "${UrlsTable.Arn}/index/CustomAliasIndex"
             - Effect: Allow
@@ -304,7 +304,10 @@ Resources:
               Action:
                 - dynamodb:GetItem
                 - dynamodb:UpdateItem
-              Resource: !GetAtt UrlsTable.Arn
+                - dynamodb:Query
+              Resource:
+                - !GetAtt UrlsTable.Arn
+                - !Sub "${UrlsTable.Arn}/index/CustomAliasIndex"
             - Effect: Allow
               Action:
                 - dynamodb:Query
@@ -344,7 +347,7 @@ Resources:
             - Effect: Allow
               Action:
                 - dynamodb:Query
-              Resource: 
+              Resource:
                 - !GetAtt UrlsTable.Arn
                 - !Sub "${UrlsTable.Arn}/index/VisibilityIndex"
 
