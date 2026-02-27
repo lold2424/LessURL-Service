@@ -7,6 +7,7 @@ interface PublicUrl {
   originalUrl: string;
   createdAt: string;
   clickCount: string;
+  customAlias?: string;
   title?: string;
 }
 
@@ -15,9 +16,9 @@ const translations = {
     subtitle: "쉽고 빠르고 안전한 지능형 URL 단축 서비스",
     createTitle: "단축 URL 생성",
     originalUrlLabel: "원본 URL",
-    titleLabel: "제목 (선택 사항)",
+    aliasLabel: "커스텀 이름 (선택 사항)",
     visibilityLabel: "공개 여부 설정",
-    visibilityDesc: "공개 대시보드에 이 URL을 노출합니다",
+    visibilityDesc: "최근 생성된 목록에 이 URL을 노출합니다",
     shortenBtn: "지금 줄이기",
     processing: "처리 중...",
     successTitle: "성공! 단축 URL:",
@@ -26,7 +27,7 @@ const translations = {
     statsDesc: "단축 ID를 입력하여 상세 클릭 분석과 AI 인사이트를 확인하세요.",
     statsPlaceholder: "단축 ID 입력 (예: ab86c836)",
     viewStatsBtn: "통계 보기",
-    dashboardTitle: "공개 대시보드",
+    dashboardTitle: "최근 생성된 URL 목록",
     loadingLinks: "최근 링크를 불러오는 중...",
     noLinks: "공개된 링크가 없습니다.",
     createOne: "첫 번째 링크를 만들어보세요!",
@@ -40,8 +41,9 @@ const translations = {
     createTitle: "Create Short URL",
     originalUrlLabel: "Original URL",
     titleLabel: "Title (Optional)",
+    aliasLabel: "Custom Alias (Optional)",
     visibilityLabel: "Public Visibility",
-    visibilityDesc: "Show this URL in the public dashboard",
+    visibilityDesc: "Show this URL in the recent links list",
     shortenBtn: "Shorten Now",
     processing: "Processing...",
     successTitle: "Success! Your Short URL:",
@@ -50,7 +52,7 @@ const translations = {
     statsDesc: "Enter your short ID to see detailed click analysis and AI insights.",
     statsPlaceholder: "Enter short ID (e.g. ab86c836)",
     viewStatsBtn: "View Stats",
-    dashboardTitle: "Public Dashboard",
+    dashboardTitle: "Recent Links",
     loadingLinks: "Loading recent links...",
     noLinks: "No public links found.",
     createOne: "Create one to see it here!",
@@ -66,7 +68,7 @@ export default function Home() {
   const t = translations[lang];
 
   const [originalUrl, setOriginalUrl] = useState<string>("");
-  const [title, setTitle] = useState<string>("");
+  const [customAlias, setCustomAlias] = useState<string>("");
   const [visibility, setVisibility] = useState<"PUBLIC" | "PRIVATE">("PRIVATE");
   const [shortenedUrl, setShortenedUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -115,7 +117,11 @@ export default function Home() {
       const response = await fetch(`${apiBaseUrl}/shorten`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: originalUrl, title: title || undefined, visibility: visibility }),
+        body: JSON.stringify({ 
+          url: originalUrl, 
+          customAlias: customAlias || undefined,
+          visibility: visibility 
+        }),
       });
       if (!response.ok) {
         const errorData = await response.json();
@@ -124,7 +130,7 @@ export default function Home() {
       const data = await response.json();
       setShortenedUrl(data.shortUrl);
       setOriginalUrl("");
-      setTitle("");
+      setCustomAlias("");
       if (visibility === "PUBLIC") fetchPublicUrls();
     } catch (err: any) {
       setError(err.message || "An unexpected error occurred.");
@@ -179,12 +185,12 @@ export default function Home() {
             </div>
 
             <div>
-              <label className="block text-brand-gray text-sm font-bold mb-2">{t.titleLabel}</label>
+              <label className="block text-brand-gray text-sm font-bold mb-2">{t.aliasLabel}</label>
               <input
                 type="text"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                placeholder="My Awesome Website"
+                value={customAlias}
+                onChange={(e) => setCustomAlias(e.target.value)}
+                placeholder="my-custom-link"
                 className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-brand-orange focus:border-transparent outline-none transition-all"
               />
             </div>
@@ -254,40 +260,48 @@ export default function Home() {
                 <p className="font-bold text-brand-navy/60 animate-pulse">{t.loadingLinks}</p>
               </div>
             ) : publicUrls.length > 0 ? (
-              publicUrls.map((url) => (
-                <div key={url.shortId} className="group p-4 rounded-xl border border-slate-50 hover:border-orange-200 hover:bg-orange-50/30 transition-all">
-                  <div className="flex justify-between items-start mb-2">
-                    <h3 className="font-bold text-brand-navy truncate pr-4">{url.title || "Untitled Link"}</h3>
-                    <span className="bg-brand-orange/10 px-3 py-1.5 rounded-lg text-xs font-black text-brand-orange border border-brand-orange/20 shadow-sm whitespace-nowrap">
-                      {url.clickCount} {t.clicks}
-                    </span>
+              publicUrls.map((url) => {
+                const displayPath = url.customAlias || url.shortId;
+                const fullShortUrl = `${apiBaseUrl}/${displayPath}`;
+                return (
+                  <div key={url.shortId} className="group p-5 rounded-xl border border-slate-50 hover:border-orange-200 hover:bg-orange-50/30 transition-all shadow-sm hover:shadow-md">
+                    <div className="flex justify-between items-start mb-1">
+                      <h3 className="text-lg font-black text-brand-navy truncate pr-4 group-hover:text-brand-orange transition-colors">
+                        {url.title || "Untitled Link"}
+                      </h3>
+                      <span className="bg-brand-orange text-white px-3 py-1 rounded-lg text-[10px] font-black uppercase shadow-sm whitespace-nowrap">
+                        {url.clickCount} {t.clicks}
+                      </span>
+                    </div>
+                    
+                    <div className="mb-4">
+                      <a 
+                        href={fullShortUrl} 
+                        target="_blank" 
+                        rel="noopener noreferrer" 
+                        className="text-xs font-bold text-slate-400 font-mono hover:text-brand-orange hover:underline transition-all"
+                      >
+                        /{displayPath}
+                      </a>
+                    </div>
+                    
+                    <div className="flex justify-between items-center pt-3 border-t border-slate-100/50">
+                      <span className="text-[11px] text-slate-400 font-medium italic">{t.created}: {formatDate(url.createdAt)}</span>
+                      <a 
+                        href={fullShortUrl} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-[11px] font-black text-brand-navy hover:border-brand-orange hover:text-brand-orange transition-all shadow-sm active:scale-95 group/btn"
+                      >
+                        <span>{t.visitOriginal}</span>
+                        <svg className="w-3 h-3 transition-transform group-hover/btn:translate-x-0.5 group-hover/btn:-translate-y-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                        </svg>
+                      </a>
+                    </div>
                   </div>
-                  <div className="mb-3">
-                    <a 
-                      href={`${apiBaseUrl}/${url.shortId}`} 
-                      target="_blank" 
-                      rel="noopener noreferrer" 
-                      className="text-sm text-brand-orange font-bold font-mono hover:underline decoration-orange-300 transition-all"
-                    >
-                      {url.shortId}
-                    </a>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-[11px] text-slate-400 font-medium italic">{t.created}: {formatDate(url.createdAt)}</span>
-                    <a 
-                      href={`${apiBaseUrl}/${url.shortId}`} 
-                      target="_blank" 
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-brand-orange/30 text-[11px] font-black text-brand-orange hover:bg-brand-orange hover:text-white transition-all shadow-sm active:scale-95 group/btn"
-                    >
-                      <span>{t.visitOriginal}</span>
-                      <svg className="w-3 h-3 transition-transform group-hover/btn:translate-x-0.5 group-hover/btn:-translate-y-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                      </svg>
-                    </a>
-                  </div>
-                </div>
-              ))
+                );
+              })
             ) : (
               <div className="flex flex-col items-center justify-center py-20 text-slate-400 text-center">
                 <p className="italic">{t.noLinks}</p>
@@ -315,7 +329,7 @@ export default function Home() {
                 className="flex-1 md:w-64 px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-brand-orange focus:border-transparent outline-none transition-all"
               />
               <button
-                onClick={() => searchId && (window.location.href = `/stats?id=${searchId.split('/').pop()}`)}
+                onClick={() => searchId && (window.location.href = `/stats/?id=${searchId.split('/').pop()}`)}
                 className="bg-brand-navy hover:bg-brand-gray text-white font-bold py-3 px-6 rounded-xl transition-all shadow-lg shadow-brand-navy/20"
               >
                 {t.viewStatsBtn}

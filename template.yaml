@@ -6,10 +6,13 @@ Description: >
   Java 21 & SnapStart based URL Shortener Service
 
 Parameters:
+  HostedZoneId:
+    Type: String
+    Default: "Z079670437KXXERC398XZ"
+    Description: "Route 53 Hosted Zone ID for lessurl.site"
   CorsAllowedOrigin:
     Type: String
-    Default: "http://localhost:3000"
-    Description: API에 대한 CORS 헤더 값
+    Default: "https://www.lessurl.site"
   GeminiApiKey:
     Type: String
     Description: Gemini API 키
@@ -20,12 +23,17 @@ Parameters:
     NoEcho: true
   BaseUrl:
     Type: String
-    Default: ""
+    Default: "https://lessurl.site"
     Description: "단축 URL의 베이스 도메인"
+  AdminToken:
+    Type: String
+    Default: "admin1234"
+    Description: "관리자 페이지용 비밀 토큰"
+    NoEcho: true
 
 Globals:
   Function:
-    Timeout: 20
+    Timeout: 60
     MemorySize: 1024
     Runtime: java21
     Architectures:
@@ -35,9 +43,25 @@ Globals:
       Variables:
         URLS_TABLE: !Ref UrlsTable
         CLICKS_TABLE: !Ref ClicksTable
+        TREND_INSIGHTS_TABLE: !Ref TrendInsightsTable
+        AI_ANALYTIC_TABLE: !Ref AiAnalyticTable
+        SERVICE_MONITOR_TABLE: !Ref ServiceMonitorTable
         CORS_ALLOWED_ORIGIN: !Ref CorsAllowedOrigin
+        DYNAMODB_ENDPOINT: ""
 
 Resources:
+  # 1. SSL 인증서 생성
+  ApiCertificate:
+    Type: AWS::CertificateManager::Certificate
+    Properties:
+      DomainName: "lessurl.site"
+      SubjectAlternativeNames:
+        - "www.lessurl.site"
+      ValidationMethod: DNS
+      DomainValidationOptions:
+        - DomainName: "lessurl.site"
+          HostedZoneId: !Ref HostedZoneId
+
   # API Gateway
   UrlShortenerApi:
     Type: AWS::Serverless::Api
@@ -45,9 +69,17 @@ Resources:
       StageName: prod
       Cors:
         AllowMethods: "'GET,POST,OPTIONS'"
-        AllowHeaders: "'Content-Type'"
+        AllowHeaders: "'Content-Type,Authorization'"
         AllowOrigin: "'*'"
-  # DynamoDB Tables
+      # 백엔드가 메인 도메인을 차지합니다
+      Domain:
+        DomainName: "lessurl.site"
+        CertificateArn: !Ref ApiCertificate
+        Route53:
+          HostedZoneId: !Ref HostedZoneId
+        EndpointConfiguration: REGIONAL
+
+  # DynamoDB Tables (기존 설정 유지)
   UrlsTable:
     Type: AWS::DynamoDB::Table
     Properties:
@@ -55,6 +87,8 @@ Resources:
       BillingMode: PAY_PER_REQUEST
       AttributeDefinitions:
         - AttributeName: shortId
+          AttributeType: S
+        - AttributeName: customAlias
           AttributeType: S
         - AttributeName: visibility
           AttributeType: S
@@ -70,6 +104,12 @@ Resources:
               KeyType: HASH
             - AttributeName: createdAt
               KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        - IndexName: CustomAliasIndex
+          KeySchema:
+            - AttributeName: customAlias
+              KeyType: HASH
           Projection:
             ProjectionType: ALL
 
@@ -89,8 +129,61 @@ Resources:
         - AttributeName: timestamp
           KeyType: RANGE
 
+  TrendInsightsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: trendInsights
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: shortId
+          AttributeType: S
+        - AttributeName: category
+          AttributeType: S
+      KeySchema:
+        - AttributeName: shortId
+          KeyType: HASH
+        - AttributeName: category
+          KeyType: RANGE
+
+  AiAnalyticTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: AIAnalytic
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: shortId
+          AttributeType: S
+        - AttributeName: generatedAt
+          AttributeType: S
+      KeySchema:
+        - AttributeName: shortId
+          KeyType: HASH
+        - AttributeName: generatedAt
+          KeyType: RANGE
+
+  ServiceMonitorTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: serviceMonitor
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: metricType
+          AttributeType: S
+        - AttributeName: timestamp
+          AttributeType: S
+      KeySchema:
+        - AttributeName: metricType
+          KeyType: HASH
+        - AttributeName: timestamp
+          KeyType: RANGE
+
+  # SQS Queue for Analytics
+  AnalyticsQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      VisibilityTimeout: 90 # Lambda Timeout(60s)보다 길게 설정
+
   # Lambda Functions
-  # 1. 단축 생성: 쓰기(PutItem)만 가능
   ShortenFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -116,9 +209,10 @@ Resources:
             - Effect: Allow
               Action:
                 - dynamodb:PutItem
-              Resource: !GetAtt UrlsTable.Arn
+              Resource: 
+                - !GetAtt UrlsTable.Arn
+                - !GetAtt ServiceMonitorTable.Arn
 
-  # 2. 리다이렉트: URL조회(Get), 수정(Update) / 클릭기록(Put)
   RedirectFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -126,6 +220,9 @@ Resources:
       Handler: lessurl.RedirectHandler::handleRequest
       SnapStart:
         ApplyOn: PublishedVersions
+      Environment:
+        Variables:
+          ANALYTICS_QUEUE_URL: !Ref AnalyticsQueue
       Events:
         ApiEvent:
           Type: Api
@@ -133,20 +230,56 @@ Resources:
             RestApiId: !Ref UrlShortenerApi
             Path: /{shortId}
             Method: GET
+        RootEvent:
+          Type: Api
+          Properties:
+            RestApiId: !Ref UrlShortenerApi
+            Path: /
+            Method: GET
       Policies:
         - Version: '2012-10-17'
           Statement:
             - Effect: Allow
               Action:
                 - dynamodb:GetItem
+                - dynamodb:Query
+              Resource: 
+                - !GetAtt UrlsTable.Arn
+                - !Sub "${UrlsTable.Arn}/index/CustomAliasIndex"
+            - Effect: Allow
+              Action:
+                - sqs:SendMessage
+              Resource: !GetAtt AnalyticsQueue.Arn
+
+  AnalyticsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: LessUrlFunction
+      Handler: lessurl.AnalyticsHandler::handleRequest
+      SnapStart:
+        ApplyOn: PublishedVersions
+      Events:
+        SqsEvent:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt AnalyticsQueue.Arn
+            BatchSize: 10
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
                 - dynamodb:UpdateItem
               Resource: !GetAtt UrlsTable.Arn
             - Effect: Allow
               Action:
                 - dynamodb:PutItem
               Resource: !GetAtt ClicksTable.Arn
+            - Effect: Allow
+              Action:
+                - dynamodb:UpdateItem
+              Resource: !GetAtt TrendInsightsTable.Arn
 
-  # 3. 통계: URL조회(Get) / 클릭조회(Query)
   StatsFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -154,6 +287,9 @@ Resources:
       Handler: lessurl.StatsHandler::handleRequest
       SnapStart:
         ApplyOn: PublishedVersions
+      Environment:
+        Variables:
+          GEMINI_API_KEY: !Ref GeminiApiKey
       Events:
         ApiEvent:
           Type: Api
@@ -173,8 +309,21 @@ Resources:
               Action:
                 - dynamodb:Query
               Resource: !GetAtt ClicksTable.Arn
+            - Effect: Allow
+              Action:
+                - dynamodb:Query
+                - dynamodb:GetItem
+              Resource: !GetAtt TrendInsightsTable.Arn
+            - Effect: Allow
+              Action:
+                - dynamodb:PutItem
+                - dynamodb:Query
+              Resource: !GetAtt AiAnalyticTable.Arn
+            - Effect: Allow
+              Action:
+                - dynamodb:PutItem
+              Resource: !GetAtt ServiceMonitorTable.Arn
 
-  # 4. 공개 목록: 인덱스 쿼리
   ListPublicFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -199,7 +348,32 @@ Resources:
                 - !GetAtt UrlsTable.Arn
                 - !Sub "${UrlsTable.Arn}/index/VisibilityIndex"
 
-  # Cloud Watch 알람 설정
+  MonitorFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: LessUrlFunction
+      Handler: lessurl.MonitorHandler::handleRequest
+      SnapStart:
+        ApplyOn: PublishedVersions
+      Environment:
+        Variables:
+          NEXT_PUBLIC_ADMIN_TOKEN: !Ref AdminToken
+          CORS_ALLOWED_ORIGIN: !Ref CorsAllowedOrigin
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            RestApiId: !Ref UrlShortenerApi
+            Path: /admin/metrics
+            Method: GET
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:Query
+              Resource: !GetAtt ServiceMonitorTable.Arn
+
   MonitoringTopic:
     Type: AWS::SNS::Topic
     Properties:
@@ -208,7 +382,6 @@ Resources:
         - Protocol: email
           Endpoint: "lold2424@gmail.com"
 
-  # Lambda Errors: 에러 > 10/분 일 때 알람 발송 (Shorten)
   ShortenErrorAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
@@ -227,7 +400,6 @@ Resources:
       AlarmActions:
         - !Ref MonitoringTopic
 
-  # Lambda Duration: 실행시간 > 3초 (3000ms) 일 때 알람 발송 (Shorten)
   ShortenDurationAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
@@ -246,7 +418,6 @@ Resources:
       AlarmActions:
         - !Ref MonitoringTopic
 
-  # RedirectFunction 알람
   RedirectErrorAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
@@ -283,7 +454,6 @@ Resources:
       AlarmActions:
         - !Ref MonitoringTopic
 
-  # StatsFunction 알람
   StatsErrorAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
@@ -320,7 +490,6 @@ Resources:
       AlarmActions:
         - !Ref MonitoringTopic
 
-  # API Gateway 5XX: 서버 에러 > 5/분 일 때 알람 발송
   ApiGateway5xxAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
@@ -339,7 +508,6 @@ Resources:
       AlarmActions:
         - !Ref MonitoringTopic
 
-  # API Gateway 4XX: 클라이언트 에러 > 50/분 일 때 알람 발송
   ApiGateway4xxAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
@@ -358,7 +526,6 @@ Resources:
       AlarmActions:
         - !Ref MonitoringTopic
 
-  # DynamoDB: 읽기 스로틀링 발생 시 알람 발송
   DynamoDbThrottleAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
@@ -389,3 +556,5 @@ Outputs:
   ClicksTableName:
     Description: "Clicks DynamoDB Table"
     Value: !Ref ClicksTable
+
+# Force redeploy to apply new CORS settings

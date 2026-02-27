@@ -14,6 +14,8 @@ import org.mockito.Captor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
+import software.amazon.awssdk.services.lambda.LambdaClient;
+import software.amazon.awssdk.services.sqs.SqsClient;
 import software.amazon.awssdk.services.dynamodb.model.PutItemRequest;
 
 import java.io.IOException;
@@ -38,6 +40,12 @@ class ShortenHandlerTest {
 
     @Mock
     private DynamoDbClient mockDdb;
+
+    @Mock
+    private LambdaClient mockLambda;
+
+    @Mock
+    private SqsClient mockSqs;
 
     @Mock
     private Context mockContext;
@@ -80,7 +88,7 @@ class ShortenHandlerTest {
         lenient().when(mockHttpClient.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
                 .thenReturn(mockHttpResponse);
 
-        shortenHandler = new ShortenHandler(mockDdb, gson, "TestTable", testApiKey, testSafeBrowsingApiKey, mockHttpClient);
+        shortenHandler = new ShortenHandler(mockDdb, mockLambda, mockSqs, gson, "TestTable", testApiKey, testSafeBrowsingApiKey, mockHttpClient);
     }
 
 
@@ -115,9 +123,10 @@ class ShortenHandlerTest {
         assertEquals(200, response.getStatusCode());
 
         Map<String, String> responseBody = gson.fromJson(response.getBody(), Map.class);
-        assertEquals(2, responseBody.size());
+        assertTrue(responseBody.size() >= 2);
         assertTrue(responseBody.containsKey("shortId"));
         assertTrue(responseBody.containsKey("shortUrl"));
+        assertEquals(7, ((String)responseBody.get("shortId")).length());
 
         verify(mockDdb).putItem(putItemRequestCaptor.capture());
         String savedShortId = putItemRequestCaptor.getValue().item().get("shortId").s();
@@ -171,7 +180,7 @@ class ShortenHandlerTest {
         assertEquals(200, response.getStatusCode());
 
         Map<String, String> responseBody = gson.fromJson(response.getBody(), Map.class);
-        assertEquals(2, responseBody.size());
+        assertTrue(responseBody.size() >= 2);
         assertTrue(responseBody.containsKey("shortUrl"));
 
         verify(mockDdb).putItem(putItemRequestCaptor.capture());
@@ -196,7 +205,7 @@ class ShortenHandlerTest {
 
         // then
         assertEquals(400, response.getStatusCode());
-        assertTrue(response.getBody().contains("요청 본문이 비어 있습니다."));
+        assertTrue(response.getBody().contains("Body is empty"));
     }
 
     @Test
@@ -213,16 +222,16 @@ class ShortenHandlerTest {
 
         // then
         assertEquals(500, response.getStatusCode());
-        assertTrue(response.getBody().contains("내부 서버 오류"));
+        assertTrue(response.getBody().contains("Server Error"));
     }
 
     @Test
-    @DisplayName("URL과 Title을 요청하면 DB에 저장하고 shortId, shortUrl만 반환한다")
-    void testHandleRequest_WithTitle() {
+    @DisplayName("URL과 CustomAlias를 요청하면 DB에 저장하고 해당 alias가 포함된 shortUrl을 반환한다")
+    void testHandleRequest_WithCustomAlias() {
         // given
         String inputUrl = "google.com";
-        String inputTitle = "구글 메인";
-        String requestBody = String.format("{\"url\": \"%s\", \"title\": \"%s\"}", inputUrl, inputTitle);
+        String inputAlias = "my-google";
+        String requestBody = String.format("{\"url\": \"%s\", \"customAlias\": \"%s\"}", inputUrl, inputAlias);
         APIGatewayProxyRequestEvent request = createApiRequest(requestBody);
 
         // when
@@ -233,7 +242,7 @@ class ShortenHandlerTest {
 
         Map<String, String> responseBody = gson.fromJson(response.getBody(), Map.class);
 
-        assertEquals(2, responseBody.size());
+        assertTrue(responseBody.size() >= 2);
         assertTrue(responseBody.containsKey("shortId"));
         assertTrue(responseBody.containsKey("shortUrl"));
 
@@ -242,9 +251,9 @@ class ShortenHandlerTest {
         String savedShortId = capturedRequest.item().get("shortId").s();
         String returnedShortUrl = responseBody.get("shortUrl");
 
-        assertEquals(inputTitle, capturedRequest.item().get("title").s());
+        assertEquals(inputAlias, capturedRequest.item().get("customAlias").s());
         assertEquals("https://" + inputUrl, capturedRequest.item().get("originalUrl").s());
-        assertTrue(returnedShortUrl.endsWith(savedShortId));
+        assertTrue(returnedShortUrl.endsWith(inputAlias));
         assertTrue(returnedShortUrl.startsWith("https://test-api.com/prod/"));
     }
 

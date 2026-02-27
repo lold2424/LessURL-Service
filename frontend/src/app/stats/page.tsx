@@ -8,10 +8,13 @@ interface StatsData {
   clicks: number;
   stats: {
     originalUrl: string;
+    customAlias?: string;
     title?: string;
     clicksByHour: Record<string, number>;
     clicksByDay: Record<string, number>;
     clicksByReferer: Record<string, number>;
+    countryStats?: Record<string, number>;
+    deviceStats?: Record<string, number>;
     peakHour: number | null;
     topReferer: string | null;
     aiInsight: string;
@@ -32,6 +35,10 @@ const translations = {
     noDailyData: "아직 일별 데이터가 없습니다.",
     refererTitle: "🔗 주요 유입 경로",
     noRefererData: "유입 경로 데이터가 없습니다.",
+    countryTitle: "🌍 국가별 유입",
+    noCountryData: "국가 데이터가 없습니다.",
+    deviceTitle: "📱 기기별 분포",
+    noDeviceData: "기기 데이터가 없습니다.",
     proTipTitle: "전문가 팁 💡",
     proTipDesc: (hour: number) => `당신의 오디언스는 주로 ${hour}:00 시에 가장 활발합니다. 다음 링크는 이 시간대에 맞춰 공유해보세요!`,
     clicks: "클릭",
@@ -49,6 +56,10 @@ const translations = {
     noDailyData: "No daily data yet.",
     refererTitle: "🔗 Top Referers",
     noRefererData: "No referer data.",
+    countryTitle: "🌍 Top Countries",
+    noCountryData: "No country data.",
+    deviceTitle: "📱 Device Distribution",
+    noDeviceData: "No device data.",
     proTipTitle: "Pro Tip 💡",
     proTipDesc: (hour: number) => `Most of your audience visits during ${hour}:00. Consider posting your next link around this time for maximum engagement!`,
     clicks: "clicks",
@@ -154,7 +165,7 @@ function StatsContent() {
           {/* Main Stats Card */}
           <div className="md:col-span-2 space-y-8">
             <section className="bg-white p-8 rounded-3xl shadow-xl shadow-slate-200/50 border border-slate-50">
-              <h1 className="text-3xl font-black text-brand-navy mb-1">{data.stats.title || "Untitled Link"}</h1>
+              <h1 className="text-3xl font-black text-brand-navy mb-1">{data.stats.title || data.stats.customAlias || shortId}</h1>
               <a href={data.stats.originalUrl} target="_blank" rel="noreferrer" className="text-brand-orange hover:text-brand-amber hover:underline break-all text-sm mb-6 block font-medium">
                 {data.stats.originalUrl}
               </a>
@@ -193,6 +204,32 @@ function StatsContent() {
                 ) : <p className="text-slate-400 italic">{t.noDailyData}</p>}
               </div>
             </section>
+
+            {/* Device Distribution - New Feature */}
+            <section className="bg-white p-8 rounded-3xl shadow-xl shadow-slate-200/50 border border-slate-50">
+              <h3 className="text-xl font-bold text-brand-navy mb-6 flex items-center gap-2">
+                {t.deviceTitle}
+              </h3>
+              <div className="flex flex-wrap gap-4">
+                {data.stats.deviceStats && Object.entries(data.stats.deviceStats).length > 0 ? (
+                  Object.entries(data.stats.deviceStats).map(([device, count]) => (
+                    <div key={device} className="flex-1 min-w-[120px] bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                      <div className="flex justify-between items-center mb-2">
+                        <span className="text-xs font-black text-brand-navy uppercase">{device}</span>
+                        <span className="text-xs font-bold text-brand-orange">{Math.round((count / data.clicks) * 100)}%</span>
+                      </div>
+                      <div className="h-2 bg-white rounded-full overflow-hidden border border-slate-200">
+                        <div 
+                          className="h-full bg-brand-navy rounded-full" 
+                          style={{ width: `${(count / data.clicks) * 100}%` }}
+                        ></div>
+                      </div>
+                      <p className="text-[10px] text-slate-400 mt-2 font-bold">{count} {t.clicks}</p>
+                    </div>
+                  ))
+                ) : <p className="text-slate-400 italic">{t.noDeviceData}</p>}
+              </div>
+            </section>
           </div>
 
           {/* Sidebar Stats */}
@@ -218,6 +255,36 @@ function StatsContent() {
                       </div>
                     ))
                 ) : <p className="text-slate-400 italic">{t.noRefererData}</p>}
+              </div>
+            </section>
+
+            {/* Country Statistics - New Feature */}
+            <section className="bg-white p-8 rounded-3xl shadow-xl shadow-slate-200/50 border border-slate-50">
+              <h3 className="text-xl font-bold text-brand-navy mb-6">{t.countryTitle}</h3>
+              <div className="space-y-4">
+                {data.stats.countryStats && Object.entries(data.stats.countryStats).length > 0 ? (
+                  Object.entries(data.stats.countryStats)
+                    .sort((a, b) => b[1] - a[1])
+                    .map(([country, count]) => (
+                      <div key={country} className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-brand-navy/5 rounded-xl flex items-center justify-center font-black text-brand-navy text-xs border border-brand-navy/10">
+                          {country}
+                        </div>
+                        <div className="flex-1">
+                          <div className="flex justify-between text-[10px] mb-1 font-bold">
+                            <span className="text-slate-400 uppercase">{country}</span>
+                            <span className="text-brand-orange">{count}</span>
+                          </div>
+                          <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                            <div 
+                              className="h-full bg-brand-orange rounded-full" 
+                              style={{ width: `${(count / data.clicks) * 100}%` }}
+                            ></div>
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                ) : <p className="text-slate-400 italic">{t.noCountryData}</p>}
               </div>
             </section>
 
